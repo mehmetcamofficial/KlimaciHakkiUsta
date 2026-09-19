@@ -1,217 +1,171 @@
-import React, { useEffect, useMemo, useState } from 'react';
-import { Ionicons } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
+import React, { useState } from "react";
 import {
-  ActivityIndicator,
-  ScrollView,
-  StyleSheet,
+  Pressable,
   Text,
   TextInput,
-  TouchableOpacity,
   View,
-} from 'react-native';
+  useWindowDimensions,
+} from "react-native";
+import { Ionicons } from "@expo/vector-icons";
+import { useRouter } from "expo-router";
+import { Brand, Screen, ServiceCard, State } from "@/components/ui/marketplace";
+import { useCatalog } from "@/hooks/use-catalog";
+import { colors, radius, spacing, ui } from "@/theme";
 
-import { fetchServiceCategories } from '@/services/categories';
-import type { ServiceCategory } from '@/types/domain';
-
+const quickSlugs = [
+  "su-kacagi",
+  "elektrik-arizasi",
+  "klima-bakimi",
+  "kapi-acma",
+];
 export default function HomeScreen() {
   const router = useRouter();
-
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(false);
-  const [categories, setCategories] = useState<ServiceCategory[]>([]);
-  const [search, setSearch] = useState('');
-
-  useEffect(() => {
-    let cancelled = false;
-
-    async function load() {
-      setLoading(true);
-      setError(false);
-
-      try {
-        const result = await fetchServiceCategories();
-        if (!cancelled) setCategories(result);
-      } catch {
-        if (!cancelled) setError(true);
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    }
-
-    load();
-
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  const filteredCategories = useMemo(() => {
-    const query = search.trim().toLocaleLowerCase('tr');
-    if (!query) return categories;
-    return categories.filter((category) => category.name.toLocaleLowerCase('tr').includes(query));
-  }, [categories, search]);
-
+  const { catalog, loading, error, retry } = useCatalog();
+  const [search, setSearch] = useState("");
+  const { width, fontScale } = useWindowDimensions();
+  const query = search.trim().toLocaleLowerCase("tr");
+  const types = catalog?.serviceTypes ?? [];
+  const categories = (catalog?.categories ?? []).filter(
+    (category) =>
+      !query ||
+      [
+        category.name,
+        ...types
+          .filter((type) => type.categoryId === category.id)
+          .map((type) => type.name),
+      ].some((name) => name.toLocaleLowerCase("tr").includes(query)),
+  );
   return (
-    <ScrollView style={styles.container}>
-      <View style={styles.content}>
-        <Text style={styles.title}>Klimacı Hakkı Usta</Text>
-        <Text style={styles.subtitle}>Bugün neye ihtiyacınız var?</Text>
-
-        <View style={styles.searchBox}>
-          <Ionicons name="search" size={20} color="#94A3B8" />
-          <TextInput
-            style={styles.searchInput}
-            placeholder="Hangi hizmete ihtiyacınız var?"
-            placeholderTextColor="#94A3B8"
-            value={search}
-            onChangeText={setSearch}
-          />
-        </View>
-
-        <Text style={styles.sectionTitle}>Kategoriler</Text>
-
-        {loading ? (
-          <View style={styles.centerState}>
-            <ActivityIndicator size="large" color="#06B6D4" />
-            <Text style={styles.centerStateText}>Kategoriler yükleniyor...</Text>
-          </View>
-        ) : error && categories.length === 0 ? (
-          <View style={styles.centerState}>
-            <Text style={styles.centerStateTitle}>Kategoriler yüklenemedi</Text>
-            <Text style={styles.centerStateText}>
-              Lütfen internet bağlantını kontrol edip tekrar dener misin?
+    <Screen>
+      <Brand />
+      <View style={{ paddingVertical: spacing.lg, gap: spacing.md }}>
+        <Text style={[ui.caption, { color: colors.accent, fontWeight: "700" }]}>
+          EVİNİZ İÇİN, YANINIZDA
+        </Text>
+        <Text style={ui.title}>Bugün neye{"\n"}ihtiyacınız var?</Text>
+        <Text style={ui.body}>
+          Bakım, onarım ve günlük işler için hizmetinizi seçin.
+        </Text>
+      </View>
+      <View style={[ui.input, ui.row]}>
+        <Ionicons name="search" size={22} color={colors.muted} />
+        <TextInput
+          accessibilityLabel="Hizmet ara"
+          placeholder="Hangi hizmete ihtiyacınız var?"
+          placeholderTextColor={colors.muted}
+          value={search}
+          onChangeText={setSearch}
+          style={{ flex: 1, minWidth: 0, fontSize: 16, color: colors.text }}
+        />
+      </View>
+      <Text style={ui.heading}>Hizmetler</Text>
+      {loading ? (
+        <State loading title="Hizmetler yükleniyor…" />
+      ) : error ? (
+        <State title="Hizmetler şu anda yüklenemiyor." retry={retry} />
+      ) : (
+        <>
+          {catalog?.source === "local" && (
+            <Text style={ui.caption}>
+              Başlangıç hizmet kataloğu gösteriliyor.
             </Text>
-          </View>
-        ) : filteredCategories.length === 0 ? (
-          <View style={styles.centerState}>
-            <Text style={styles.centerStateText}>Aramanla eşleşen kategori bulunamadı.</Text>
-          </View>
-        ) : (
-          <View style={styles.grid}>
-            {filteredCategories.map((category) => (
-              <TouchableOpacity
+          )}
+          {!categories.length && (
+            <State
+              title={
+                query
+                  ? "Aramanızla eşleşen hizmet bulunamadı."
+                  : "Henüz hizmet bulunmuyor."
+              }
+              retry={query ? undefined : retry}
+            />
+          )}
+          <View
+            style={{ flexDirection: "row", flexWrap: "wrap", gap: spacing.md }}
+          >
+            {categories.map((category) => (
+              <Pressable
                 key={category.id}
-                style={styles.categoryCard}
+                accessibilityRole="button"
+                accessibilityLabel={category.name}
                 onPress={() =>
-                  router.push({ pathname: '/services/[categorySlug]', params: { categorySlug: category.slug } })
-                }>
-                <View style={styles.categoryIconWrap}>
+                  router.push({
+                    pathname: "/services/[categorySlug]",
+                    params: { categorySlug: category.slug },
+                  })
+                }
+                style={({ pressed }) => [
+                  ui.card,
+                  {
+                    width: width < 350 || fontScale > 1.3 ? "100%" : "47.5%",
+                    minHeight: 132,
+                    opacity: pressed ? 0.6 : 1,
+                    justifyContent: "space-between",
+                  },
+                ]}
+              >
+                <View
+                  style={{
+                    backgroundColor: colors.subtle,
+                    borderRadius: radius.sm,
+                    padding: spacing.sm,
+                    alignSelf: "flex-start",
+                  }}
+                >
                   <Ionicons
-                    name={category.iconKey as React.ComponentProps<typeof Ionicons>['name']}
-                    size={26}
-                    color="#06B6D4"
+                    name={
+                      (category.iconKey in Ionicons.glyphMap
+                        ? category.iconKey
+                        : "grid-outline") as React.ComponentProps<
+                        typeof Ionicons
+                      >["name"]
+                    }
+                    size={25}
+                    color={colors.accent}
                   />
                 </View>
-                <Text style={styles.categoryName}>{category.name}</Text>
-              </TouchableOpacity>
+                <Text style={[ui.heading, { fontSize: 16, lineHeight: 23 }]}>
+                  {category.name}
+                </Text>
+              </Pressable>
             ))}
           </View>
-        )}
-
-        <View style={styles.darkCard}>
-          <Text style={styles.darkCardTitle}>Acil Servis</Text>
-          <Text style={styles.darkCardText}>
-            Yakındaki uygun ustaya talep gönderilir. Usta kabul edince takip ekranı açılır.
-          </Text>
-        </View>
+          {!query && (
+            <>
+              <Text style={ui.heading}>Sık Kullanılan Hizmetler</Text>
+              {types
+                .filter((type) => quickSlugs.includes(type.slug))
+                .map((type) => (
+                  <ServiceCard
+                    key={type.id}
+                    title={type.name}
+                    icon={
+                      catalog?.categories.find(
+                        (category) => category.id === type.categoryId,
+                      )?.iconKey
+                    }
+                    onPress={() =>
+                      router.push({
+                        pathname: "/request/new",
+                        params: {
+                          category: type.categorySlug,
+                          type: type.slug,
+                        },
+                      })
+                    }
+                  />
+                ))}
+            </>
+          )}
+        </>
+      )}
+      <View style={ui.card}>
+        <Text style={ui.heading}>İhtiyacınızı anlatın, ilk adımı atın.</Text>
+        <Text style={ui.body}>
+          Hizmetinizi seçin, detayları ekleyin ve talebinizin durumunu takip
+          edin.
+        </Text>
       </View>
-    </ScrollView>
+    </Screen>
   );
 }
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#F8FAFC',
-  },
-  content: {
-    paddingHorizontal: 20,
-    paddingTop: 64,
-    paddingBottom: 32,
-  },
-  title: {
-    fontSize: 34,
-    fontWeight: '800',
-    color: '#0F172A',
-  },
-  subtitle: {
-    marginTop: 12,
-    fontSize: 18,
-    lineHeight: 26,
-    color: '#64748B',
-  },
-  searchBox: {
-    marginTop: 24,
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#FFFFFF',
-    borderRadius: 18,
-    paddingHorizontal: 16,
-    paddingVertical: 4,
-    gap: 10,
-  },
-  searchInput: {
-    flex: 1,
-    paddingVertical: 14,
-    fontSize: 16,
-    color: '#0F172A',
-  },
-  sectionTitle: {
-    marginTop: 28,
-    marginBottom: 14,
-    fontSize: 21,
-    fontWeight: '800',
-    color: '#0F172A',
-  },
-  centerState: {
-    paddingVertical: 32,
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 10,
-  },
-  centerStateTitle: { fontSize: 17, fontWeight: '800', color: '#0F172A', textAlign: 'center' },
-  centerStateText: { fontSize: 14, color: '#64748B', textAlign: 'center' },
-  grid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 12,
-  },
-  categoryCard: {
-    width: '47%',
-    backgroundColor: '#FFFFFF',
-    borderRadius: 20,
-    padding: 16,
-  },
-  categoryIconWrap: {
-    width: 44,
-    height: 44,
-    borderRadius: 14,
-    backgroundColor: '#E0F2FE',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  categoryName: {
-    marginTop: 12,
-    fontSize: 16,
-    fontWeight: '800',
-    color: '#1E293B',
-  },
-  darkCard: {
-    marginTop: 28,
-    backgroundColor: '#0F172A',
-    padding: 20,
-    borderRadius: 24,
-  },
-  darkCardTitle: {
-    color: '#FFFFFF',
-    fontSize: 21,
-    fontWeight: '800',
-  },
-  darkCardText: {
-    marginTop: 8,
-    color: '#CBD5E1',
-    fontSize: 15,
-    lineHeight: 22,
-  },
-});

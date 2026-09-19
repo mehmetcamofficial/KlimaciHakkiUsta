@@ -1,147 +1,130 @@
-# Klimacı Hakkı Usta
+# UstaYanımda
 
-Mobil bir yerel hizmet marketplace uygulaması. Başlangıçta yalnızca klima servisi
-için kurulmuş bir prototip olan uygulama, Faz 1 ile **çoklu hizmet / yerel
-profesyonel marketplace** temeline dönüştürülmüştür: kullanıcı bir kategori
-(Elektrik, Su Tesisatı, Klima, ...) ve o kategorinin altındaki bir hizmet tipini
-seçer, ardından servis talebi oluşturur.
+Klimacı Hakkı Usta prototipinden gelişen çok kategorili yerel hizmet marketplace temeli.
+Repository ve klasör adı değiştirilmedi. Hedef akış:
+**CUSTOMER → SERVICE REQUEST → PROFESSIONAL → OPERATION → COMPLETION → REVIEW**.
 
-[Expo](https://expo.dev) ve [Expo Router](https://docs.expo.dev/router/introduction)
-ile geliştirilmiştir. Veri katmanı [Supabase](https://supabase.com) kullanır.
+## Mevcut kapsam
 
-## Kurulum
+Expo SDK 54, React Native 0.81, React 19, TypeScript, Expo Router 6 ve Supabase
+(Postgres, Storage, Realtime). Yeni state yönetimi veya animasyon bağımlılığı eklenmedi.
+Supabase istemcisi, Android Hermes derlemesindeki dinamik import hatası nedeniyle
+2.109.0 sürümüne sabitlendi ([upstream hata](https://github.com/supabase/supabase-js/issues/2380)).
 
-```bash
-npm install
+10 kategori ve 45 hizmet tipi: Klima, Elektrik, Su Tesisatı, Kombi / Doğalgaz,
+Çilingir, Beyaz Eşya, Boya / Tadilat, Mobilya / Montaj, Temizlik, Bahçe / Peyzaj.
+Klima Arızası, Klima Bakımı gibi gerçek hizmet adları korunur.
+
+## Mimari ve rotalar
+
+- `types/domain.ts`: ServiceCategory, ServiceType, ServiceRequest, RequestStatus.
+- `data/service-catalog.ts`: 10 kategori / 45 hizmetin başlangıç verisi.
+- `services/categories.ts`: tek katalog snapshot'ı; remote UUID'ler yerel ID'lerle karıştırılmaz.
+- `services/requests.ts`: kayıt, Storage, listeleme, numarayla takip, güncelleme ve Realtime.
+- `hooks/use-catalog.ts`: yüklenme/hata/tekrar deneme ve unmount koruması.
+- `theme/index.ts`: renk, spacing, radius, typography, shadow token'ları.
+- `components/ui/marketplace.tsx`: Screen, Brand, Button, State, StatusBadge, ServiceCard.
+- `components/service-request-form.tsx`: ortak form, GPS/fotoğraf, başarı ve takip CTA'sı.
+- `/`: Türkçe kategori/hizmet adı araması, kategori grid'i, aynı modelden hızlı hizmetler.
+- `/services/[categorySlug]`: tüm kategoriler için tek hizmet ekranı.
+- `/request/new?category=klima&type=klima-arizasi`: seçilen hizmet formu.
+- `/service`: Taleplerim; son 50 kayıt, **henüz kullanıcıya özel değil**.
+- `/tracking?requestNo=...`: yalnız seçilen/aranan talep; başka bir son kaydı otomatik seçmez.
+- `/profile`: gerçek durumu açıklayan misafir profili, geçmiş bağlantısı.
+- `/admin`: mevcut operasyon ekranı, müşteri tab menüsünden gizli; **RBAC değildir**.
+
+Kategori 1 → N hizmet; talep kategori + hizmet ID/slug bilgilerini taşır.
+Yeni kategori/hizmet için normalde yalnız DB verisi eklemek yeterlidir; yeni ekran gerekmez.
+Offline/ilk kurulum verisini güncel tutmak için yerel katalog ve seed de güncellenmelidir.
+Sunucu boş liste döndürürse boş kalır; yalnız eksik tablo hatasında başlangıç kataloğu
+kullanılır ve UI bunu belirtir. Ağ/yetki hataları tekrar deneme ile görünürdür.
+
+## Tasarım
+
+Nötr açık zemin, koyu lacivert, kontrollü yeşil/turkuaz; 4/8/12/16/24/32 spacing.
+Safe area, klavye kaçınması, geniş metin/small-screen grid uyarlaması, basılma geri
+bildirimi, 48–52 dp eylemler ve etiketli ikon kontrolleri. Uygulama bu fazda açık temadır.
+Wordmark UI primitive'leri ve Ionicons ile oluşturuldu. Launcher/splash raster
+asset'leri hâlâ Expo başlangıç görselleridir; nihai logo bu fazın kapsamı değildir.
+Expo `name=UstaYanımda`, `slug=ustayanimda`, `scheme=ustayanimda`; package/bundle ID eklenmedi.
+
+## Veritabanı: inceleme öncesi uygulanmaz
+
+- `supabase/migrations/20260919120000_marketplace_foundation.sql`: mevcut dalda bulunan
+  additive tablo/kolon ve idempotent seed migration'ı korundu.
+- `supabase/migrations/20260919160000_marketplace_indexes.sql`: kategori/hizmet sorguları
+  için additive, tekrar çalıştırılabilir indeksler.
+
+**Remote migration uygulanmadı. Gerçek remote şema/politikalar varsayılmadı.**
+Uygulamadan önce mevcut `service_requests` yapısını, constraint ve RLS'yi inceleyin;
+SQL dosyaları inceleme için hazırlanmıştır, uygulama otomatik migration çalıştırmaz.
+`category_id`, `service_type_id` ve slug kolonları nullable eklenir; eski kayıtlar silinmez.
+Migration yoksa yalnız marketplace kolonu eksik hatasında legacy insert denenir;
+kategori/hizmet bağlamı `note` içine eklenerek korunur. Diğer hatalarda tekrar insert yapılmaz.
+
+Legacy eşleme: description → `note`, photo → `photo_url`, hizmet adı → `problem_type`.
+`brand`, `ac_type` yalnız Klima için doldurulur. `technician_*` eski konum/iletişim
+alanları korunur; yeni profesyonel modeli değildir. Sabit Hakkı Usta/telefon ataması kaldırıldı.
+Mevcut backend durumları aynen gösterilir; DB'de olmayan “iş başladı” eklenmedi.
+Talep numarası UY öneki/zaman/rastgele bölüm kullanır; DB uniqueness/idempotency garantisi değildir.
+Storage upload `upsert: false` kullanır; seçilen dosyanın MIME türü korunur.
+
+## Yerel kurulum
+
+Node >=20.19, npm ve Expo Go SDK 54 veya uyumlu development build gerekir.
+
+```sh
+npm ci
+# Yerel .env oluşturun; commit etmeyin.
 npx expo start
+npm run android
+npm run lint
+npx tsc --noEmit
+node --test tests/marketplace.cjs
+npx expo export --platform android
 ```
 
-`.env` dosyasında `EXPO_PUBLIC_SUPABASE_URL` ve `EXPO_PUBLIC_SUPABASE_ANON_KEY`
-tanımlı olmalı (yalnızca anon key — service-role key asla mobil uygulamaya
-eklenmemelidir).
+`.env` değişkenleri: `EXPO_PUBLIC_SUPABASE_URL`, `EXPO_PUBLIC_SUPABASE_ANON_KEY`.
+Yalnız client anon/publishable anahtar kullanın; service-role/private anahtar eklemeyin.
+`service-photos` bucket ve mevcut servis talep tablosu önceden hazırlanmış olmalıdır.
+Bunlar kaynak koddan otomatik oluşturulmaz.
 
-## Domain modeli: Kategori → Hizmet Tipi → Servis Talebi
+## Sınırlar ve güvenlik
 
-```
-Kategori (ör. "Su Tesisatı")
-  └─ Hizmet Tipi (ör. "Su Kaçağı")
-       └─ Servis Talebi (müşterinin oluşturduğu talep)
-```
+- Auth, müşteri sahipliği, CUSTOMER/PROFESSIONAL/ADMIN yetkileri ve güvenli RLS henüz yok.
+- Taleplerim prototipte genel kayıt listesidir. Talep numarası bir yetki mekanizması değildir.
+- Admin yalnız navigasyonda gizli; `/admin` açık rota. Durum/konum yönetimi legacy prototiptir.
+- Storage public URL davranışı korunur; private bucket/signed URL Faz 2'dir.
+- Otomatik usta eşleştirme/atama yok. Geçmiş statik profesyonel kayıtları değiştirilmedi.
+- Ana sayfada sahipliği doğrulanamayan kayıt “sizin aktif talebiniz” diye gösterilmez.
+- Konum ve ETA yalnız mevcut koordinatlardan kuş uçuşu kaba tahmindir; trafik/rota servisi değildir.
+- Başarılı upload sonrası başarısız DB insert orphan dosya bırakabilir; transactional cleanup
+  ve sunucu idempotency sonraki fazda ele alınmalı.
+- Mevcut bağımlılık ağacında npm audit bulguları ve Expo patch sürüm uyarıları var;
+  zorlayıcı/geniş dependency upgrade bu fazda yapılmadı.
 
-Tipler [`types/domain.ts`](types/domain.ts) içinde tanımlıdır:
-`ServiceCategory`, `ServiceType`, `ServiceRequest`, `RequestStatus`,
-`CreateServiceRequestInput`.
+## Faz 1 kontrol listesi
 
-Başlangıç katalog verisi (10 kategori, her biri altında birden çok hizmet
-tipi) [`data/service-catalog.ts`](data/service-catalog.ts) içinde tutulur.
-Bu dosya iki amaca hizmet eder:
+- [x] UstaYanımda uygulama kimliği ve UI wordmark.
+- [x] Tipli kategori → hizmet → talep modeli, 10 kategori / 45 hizmet.
+- [x] Ortak tasarım token/bileşenleri ve müşteri navigasyonu.
+- [x] Arama, hızlı hizmetler, dinamik kategori/hizmet/form rotaları.
+- [x] Fotoğraf/GPS/kayıt yolu, başarı → doğru talep takibi.
+- [x] Taleplerim, profil, durum takibi, değerlendirme ve admin işlevleri.
+- [x] Additive migration hazırlığı; remote DB değişikliği yapılmadı.
+- [x] Lint, TypeScript ve servis kontratı testleri.
+- [x] Android Hermes production bundle export.
+- [ ] Canlı DB üzerinde uçtan uca fotoğraf + GPS + kayıt + rating doğrulaması.
+- [ ] Tüm hedef Android boyutlarında tamamlanmış görsel regresyon.
 
-1. `supabase/migrations/` altındaki seed SQL'in kaynağıdır.
-2. Uygulamanın **çalışma zamanı fallback'idir**: Supabase'deki
-   `service_categories` / `service_types` tabloları henüz yoksa (migration
-   uygulanmadıysa) veya erişilemiyorsa, uygulama otomatik olarak bu yerel
-   katalogdan beslenir — boş/beyaz ekran yerine kategoriler yine listelenir.
+Ayrıntılı test sonuçları: [docs/validation/phase1.md](docs/validation/phase1.md).
+Başlangıç yol haritası tarihsel referans olarak [docs/roadmap.md](docs/roadmap.md)
+içinde korunur; güncel uygulama durumu bu README'dir.
 
-### Veri erişim katmanı
+## Sonraki fazlar
 
-Ekranlar Supabase sorgularını doğrudan içermez; [`services/`](services)
-altındaki ince repository katmanını kullanır:
-
-- [`services/categories.ts`](services/categories.ts) — kategori ve hizmet
-  tipi okuma (Supabase → başarısız olursa yerel katalog fallback).
-- [`services/requests.ts`](services/requests.ts) — servis talebi oluşturma
-  ve fotoğraf yükleme.
-
-### Yeni kategori eklemek
-
-`data/service-catalog.ts` içindeki `SERVICE_CATALOG` dizisine yeni bir
-`{ category, serviceTypes }` girdisi eklemek yeterlidir — hiçbir ekran kodu
-değişmez (data-driven). Kalıcı olarak Supabase'de tutmak için aynı satırı
-yeni bir migration dosyasıyla `service_categories` tablosuna da ekleyin.
-
-### Yeni hizmet tipi eklemek
-
-İlgili kategorinin `serviceTypes` dizisine yeni bir `serviceType(...)` satırı
-eklemek yeterlidir. Aynı şekilde kalıcı hale getirmek için `service_types`
-tablosuna additive bir migration ile ekleyin.
-
-## Veritabanı / Migration
-
-`supabase/migrations/20260919120000_marketplace_foundation.sql` dosyası
-additive bir migration içerir:
-
-- `service_categories` ve `service_types` tablolarını oluşturur (yoksa).
-- `service_requests` tablosuna nullable `category_id`, `category_slug`,
-  `service_type_id`, `service_type_slug` kolonlarını ekler (`ADD COLUMN IF
-  NOT EXISTS`) — mevcut `brand`, `ac_type`, `problem_type` kolonlarına
-  dokunmaz.
-- 10 kategori ve altındaki hizmet tiplerini `ON CONFLICT ... DO NOTHING` ile
-  tekrar çalıştırılabilir şekilde seed eder.
-
-**Bu migration Faz 1 kapsamında remote veritabanına otomatik uygulanmamıştır.**
-Uygulamadan önce inceleyip siz çalıştırmalısınız (`supabase db push` veya
-Supabase SQL editor). Uygulanana kadar (veya offline durumda) uygulama yerel
-katalog fallback'i ile tam işlevsel kalır; `services/requests.ts` talep
-oluştururken önce yeni marketplace kolonlarını dener, kolonlar henüz yoksa
-otomatik olarak eski (legacy) alan setiyle tekrar dener — bu sayede Klima
-akışı migration uygulanmadan da bozulmaz.
-
-## Klasör yapısı (yeni eklenenler)
-
-```
-types/domain.ts              Domain tipleri
-data/service-catalog.ts      Kategori + hizmet tipi seed/fallback verisi
-services/categories.ts       Kategori/hizmet tipi data-access katmanı
-services/requests.ts         Servis talebi oluşturma data-access katmanı
-components/service-request-form.tsx  Paylaşılan, kategoriye duyarlı talep formu
-app/(tabs)/index.tsx         Ana sayfa → marketplace keşif ekranı (arama + kategori grid)
-app/services/[categorySlug].tsx  Kategori altındaki hizmet tiplerini listeler
-app/request/new.tsx          Genel (kategori/hizmet tipine duyarlı) talep formu
-app/(tabs)/service.tsx       "Servis" sekmesi — geriye dönük uyumluluk için
-                              doğrudan Klima → Klima Arızası akışına kısayol
-supabase/migrations/         Additive, tekrar çalıştırılabilir SQL migration
-```
-
-## Akışlar
-
-- **Marketplace keşif:** Ana Sayfa → kategori seç → hizmet tipi seç → talep
-  formu (`/services/[categorySlug]` → `/request/new`).
-- **Klima (korunan akış):** Ana Sayfa → Klima kartı **veya** doğrudan "Servis"
-  sekmesi → aynı forma Klima / Klima Arızası önseçili olarak açılır. Fotoğraf
-  ekleme, GPS konumu alma ve Supabase'e kayıt aynı şekilde çalışır.
-- **Takip / Admin / Profil:** Değiştirilmedi; `service_requests` tablosunu
-  aynı şekilde okur/günceller, yeni kolonlar nullable olduğu için etkilenmez.
-
-## Faz 1 durumu
-
-- [x] Uygulama artık yalnızca klima kategorisine bağlı değil.
-- [x] 10 başlangıç kategorisi tanımlı (`data/service-catalog.ts`).
-- [x] Kategorilerin altında hizmet tipi (service type) yapısı var.
-- [x] Ana ekran kategori keşfi sunuyor (arama alanı + kategori grid).
-- [x] Kategori → hizmet tipi → talep formu akışı çalışıyor.
-- [x] Talep modeli kategori/hizmet tipi bilgisini taşıyabiliyor
-      (`category_slug`/`service_type_slug`, DB'de mevcutsa `category_id`/
-      `service_type_id`).
-- [x] Mevcut klima akışı korunuyor (fotoğraf, GPS, kayıt, takip).
-- [x] Yeni kategori eklemek için yeni ekran yazmak gerekmiyor (data-driven).
-- [x] Yeni kod (types/, data/, services/, yeni bileşenler) tip güvenli,
-      gereksiz `any` kullanılmadı.
-- [x] `.env` / secret commit edilmedi.
-- [x] Lint (`npm run lint`) ve typecheck (`npx tsc --noEmit`) temiz.
-- [x] Değişiklikler `feature/phase1-marketplace-foundation` branch'inde.
-- [x] `main` otomatik merge edilmedi.
-
-**Faz 1 kapsamı dışında bırakılanlar (sonraki fazlar için):** authentication,
-ödeme, profesyonel atama/eşleştirme sistemi, kapsamlı admin paneli, migration'ın
-remote veritabanına uygulanması. Bunlar Faz 2 (Authentication/RBAC) ve Faz 4
-(Professional modülü) kapsamındadır.
-
-## Diğer Expo komutları
-
-```bash
-npx expo start        # geliştirme sunucusu
-npm run android        # Android
-npm run ios            # iOS
-npm run web             # Web
-npm run reset-project   # Starter kodu app-example'a taşır (bu proje için kullanılmadı)
-```
+Faz 2: Auth, profiles, roller, RLS, talep sahipliği, private Storage/signed URL.
+Faz 3–4: gerçek talep yaşam döngüsü, idempotency, profesyonel onboarding/atama.
+Faz 5–6: operasyon/konum olayları ve güven/değerlendirme modeli.
+Faz 7–10: bildirim, randevu/ödeme, release kalite kapıları ve AI destekli sınıflandırma.
+Bu yetenekler mevcutmuş gibi sunulmaz.

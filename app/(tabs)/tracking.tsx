@@ -1,540 +1,302 @@
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from "react";
+import { Linking, Pressable, Text, TextInput, View } from "react-native";
+import { useLocalSearchParams } from "expo-router";
+import { Ionicons } from "@expo/vector-icons";
 import {
-  Alert,
-  Linking,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View,
-} from 'react-native';
+  Button,
+  Screen,
+  State,
+  StatusBadge,
+} from "@/components/ui/marketplace";
+import {
+  getRequest,
+  subscribeRequests,
+  updateRequest,
+  type RequestRow,
+} from "@/services/requests";
+import { colors, ui } from "@/theme";
 
-import { supabase } from '@/lib/supabase';
-
-function getDistanceKm(lat1: number, lon1: number, lat2: number, lon2: number) {
-  const R = 6371;
-  const dLat = ((lat2 - lat1) * Math.PI) / 180;
-  const dLon = ((lon2 - lon1) * Math.PI) / 180;
-
-  const a =
-    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-    Math.cos((lat1 * Math.PI) / 180) *
-      Math.cos((lat2 * Math.PI) / 180) *
-      Math.sin(dLon / 2) *
-      Math.sin(dLon / 2);
-
-  return R * (2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)));
+const steps = [
+  "Talep alındı",
+  "Usta aranıyor",
+  "Usta atandı",
+  "Yolda",
+  "Servis tamamlandı",
+];
+const labels = [
+  "Talep alındı",
+  "Usta aranıyor",
+  "Usta atandı",
+  "Usta yolda",
+  "Tamamlandı",
+];
+function distanceKm(a: number, b: number, c: number, d: number) {
+  const rad = Math.PI / 180;
+  const x =
+    Math.sin(((c - a) * rad) / 2) ** 2 +
+    Math.cos(a * rad) * Math.cos(c * rad) * Math.sin(((d - b) * rad) / 2) ** 2;
+  return 6371 * 2 * Math.atan2(Math.sqrt(x), Math.sqrt(Math.max(0, 1 - x)));
 }
-
 export default function TrackingScreen() {
-  const [request, setRequest] = useState<any>(null);
-  const [selectedRating, setSelectedRating] = useState<number>(0);
-  const [reviewComment, setReviewComment] = useState('');
-
+  const params = useLocalSearchParams<{ requestNo?: string }>();
+  const [lookup, setLookup] = useState(params.requestNo ?? "");
+  const [number, setNumber] = useState(params.requestNo ?? "");
+  const [request, setRequest] = useState<RequestRow | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(false);
+  const [attempt, setAttempt] = useState(0);
+  const [rating, setRating] = useState(0);
+  const [comment, setComment] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [message, setMessage] = useState("");
   useEffect(() => {
-    loadRequest();
-
-    const channel = supabase
-      .channel('tracking-live-location')
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'service_requests' },
-        () => loadRequest()
-      )
-      .subscribe();
-
+    setLookup(params.requestNo ?? "");
+    setNumber(params.requestNo ?? "");
+  }, [params.requestNo]);
+  useEffect(() => {
+    let active = true;
+    setRequest(null);
+    setMessage("");
+    setError(false);
+    setRating(0);
+    setComment("");
+    if (!number) return;
+    async function load() {
+      try {
+        const data = await getRequest(number);
+        if (active) {
+          setRequest(data);
+          setError(false);
+          setRating(data?.rating ?? 0);
+          setComment(data?.review_comment ?? "");
+        }
+      } catch {
+        if (active) setError(true);
+      } finally {
+        if (active) setLoading(false);
+      }
+    }
+    setLoading(true);
+    void load();
+    const unsubscribe = subscribeRequests("tracking-request", load);
     return () => {
-      supabase.removeChannel(channel);
+      active = false;
+      unsubscribe();
     };
-  }, []);
-
-  async function loadRequest() {
-    const { data } = await supabase
-      .from('service_requests')
-      .select('*')
-      .order('id', { ascending: false })
-      .limit(1)
-      .single();
-
-    setRequest(data);
-
-    if (data?.rating) {
-      setSelectedRating(data.rating);
-    }
-
-    if (data?.review_comment) {
-      setReviewComment(data.review_comment);
+  }, [number, attempt]);
+  async function review() {
+    if (!request || !rating || saving) return;
+    setSaving(true);
+    setMessage("");
+    try {
+      await updateRequest(request.id, {
+        rating,
+        review_comment: comment.trim(),
+      });
+      setMessage("Değerlendirmeniz kaydedildi.");
+    } catch {
+      setMessage("Değerlendirme kaydedilemedi. Tekrar deneyin.");
+    } finally {
+      setSaving(false);
     }
   }
-
-  async function submitReview() {
-    if (!request?.id) {
-      Alert.alert('Hata', 'Talep bulunamadı.');
-      return;
+  async function open(url: string) {
+    try {
+      await Linking.openURL(url);
+    } catch {
+      setMessage("Bağlantı açılamadı.");
     }
-
-    if (!selectedRating) {
-      Alert.alert('Eksik Bilgi', 'Lütfen 1 ile 5 arasında yıldız seç.');
-      return;
-    }
-
-    const { error } = await supabase
-      .from('service_requests')
-      .update({
-        rating: selectedRating,
-        review_comment: reviewComment,
-      })
-      .eq('id', request.id);
-
-    if (error) {
-      Alert.alert('Kayıt Hatası', error.message);
-      return;
-    }
-
-    Alert.alert('Teşekkürler', 'Değerlendirmen kaydedildi.');
-    loadRequest();
   }
-
-  const steps = ['Talep alındı', 'Usta aranıyor', 'Usta atandı', 'Yolda', 'Servis tamamlandı'];
-  const status = request?.status || 'Talep alındı';
-  const activeIndex = steps.indexOf(status);
-
-  const hasCustomerLocation = request?.latitude && request?.longitude;
-  const hasTechnicianLocation = request?.technician_latitude && request?.technician_longitude;
-
-  const distanceKm =
-    hasCustomerLocation && hasTechnicianLocation
-      ? getDistanceKm(
-          request.technician_latitude,
-          request.technician_longitude,
-          request.latitude,
-          request.longitude
+  const hasCustomer = request?.latitude != null && request.longitude != null;
+  const hasProfessional =
+    request?.technician_latitude != null &&
+    request.technician_longitude != null;
+  const distance =
+    hasCustomer && hasProfessional && request
+      ? distanceKm(
+          request.latitude!,
+          request.longitude!,
+          request.technician_latitude!,
+          request.technician_longitude!,
         )
       : null;
-
-  const etaMinutes = distanceKm !== null ? Math.max(1, Math.ceil((distanceKm / 30) * 60)) : null;
-
-  const progress =
-    distanceKm !== null
-      ? distanceKm > 3
-        ? 1
-        : Math.max(0.05, Math.min(1, distanceKm / 3))
-      : 1;
-
-  const isVeryClose = distanceKm !== null && distanceKm < 0.2;
-  const isCompleted = status === 'Servis tamamlandı';
-  const hasReview = !!request?.rating;
-
-  function openCustomerMap() {
-    Linking.openURL(`https://www.google.com/maps?q=${request.latitude},${request.longitude}`);
-  }
-
-  function openTechnicianMap() {
-    Linking.openURL(`https://www.google.com/maps?q=${request.technician_latitude},${request.technician_longitude}`);
-  }
-
-  function openRouteMap() {
-    Linking.openURL(
-      `https://www.google.com/maps/dir/?api=1&origin=${request.technician_latitude},${request.technician_longitude}&destination=${request.latitude},${request.longitude}`
-    );
-  }
-
+  const activeIndex = steps.indexOf(request?.status ?? "");
   return (
-    <ScrollView style={styles.container}>
-      <View style={styles.content}>
-        <Text style={styles.title}>Servis Takibi</Text>
-        <Text style={styles.subtitle}>Talep No: {request?.request_no || '-'}</Text>
-
-        <View style={styles.card}>
-          {steps.map((step, index) => (
-            <View key={step} style={styles.stepRow}>
-              <View style={[styles.circle, index <= activeIndex && styles.circleActive]} />
-              <Text style={[styles.stepText, index <= activeIndex && styles.stepTextActive]}>
-                {step}
-              </Text>
-            </View>
-          ))}
-        </View>
-
-        <View style={styles.infoCard}>
-          <Text style={styles.infoTitle}>Usta Bilgileri</Text>
-          <Text style={styles.infoText}>Ad: {request?.technician_name || 'Henüz atanmadı'}</Text>
-
-          <TouchableOpacity
-            disabled={!request?.technician_phone}
-            onPress={() => Linking.openURL(`tel:${request.technician_phone}`)}
-          >
-            <Text style={styles.callText}>
-              Telefon: {request?.technician_phone || '-'}
+    <Screen>
+      <Text style={ui.title}>Talep takibi</Text>
+      <TextInput
+        accessibilityLabel="Talep numarası"
+        style={ui.input}
+        placeholder="Talep numaranız"
+        autoCapitalize="characters"
+        value={lookup}
+        onChangeText={setLookup}
+      />
+      <Button
+        title="Talebi bul"
+        secondary
+        onPress={() => {
+          setNumber(lookup.trim());
+          setAttempt((value) => value + 1);
+        }}
+        disabled={!lookup.trim()}
+      />
+      {loading ? (
+        <State loading title="Talebiniz yükleniyor…" />
+      ) : error ? (
+        <State
+          title="Talep yüklenemedi."
+          retry={() => setAttempt((value) => value + 1)}
+        />
+      ) : !request ? (
+        <State
+          title={
+            number
+              ? "Bu numarayla talep bulunamadı."
+              : "Takip etmek için talep numaranızı girin veya Taleplerim ekranından seçin."
+          }
+        />
+      ) : (
+        <>
+          <View style={ui.card}>
+            <Text style={ui.heading}>
+              {request.problem_type ?? "Hizmet talebi"}
             </Text>
-          </TouchableOpacity>
-
-          <Text style={styles.infoText}>
-            Tahmini Varış: {etaMinutes ? `${etaMinutes} dakika` : request?.eta || '-'}
-          </Text>
-        </View>
-
-        <View style={styles.mapCard}>
-          <Text style={styles.mapTitle}>Canlı Konum</Text>
-
-          <Text style={styles.mapText}>
-            Müşteri Konumu: {hasCustomerLocation ? 'Alındı' : 'Yok'}
-          </Text>
-
-          <Text style={styles.mapText}>
-            Usta Konumu: {hasTechnicianLocation ? 'Paylaşıldı' : 'Henüz paylaşılmadı'}
-          </Text>
-
-          {distanceKm !== null ? (
-            <>
-              <View style={styles.miniMap}>
-                <View style={styles.mapLine} />
-
-                <View style={[styles.pinWrap, styles.customerPin]}>
-                  <Text style={styles.pinIcon}>📍</Text>
-                  <Text style={styles.customerLabel}>Müşteri</Text>
-                </View>
-
-                <View
-                  style={[
-                    styles.pinWrap,
-                    {
-                      top: isVeryClose ? 42 : 54,
-                      left: `${20 + progress * 60}%`,
-                    },
-                  ]}
-                >
-                  {isVeryClose ? (
-                    <View style={styles.techBubble}>
-                      <Text style={styles.techBubbleText}>Usta</Text>
-                    </View>
-                  ) : null}
-
-                  <Text style={styles.pinIcon}>🚐</Text>
-
-                  {!isVeryClose ? (
-                    <Text style={styles.techLabel}>Usta</Text>
-                  ) : null}
-                </View>
-              </View>
-
-              <View style={[styles.distanceBox, isCompleted && styles.completedBox]}>
-                <Text style={styles.distanceTitle}>
-                  {isCompleted ? '✅ Servis tamamlandı' : '🚐 Usta size doğru geliyor'}
+            <Text selectable style={ui.caption}>
+              {request.request_no}
+            </Text>
+            <StatusBadge status={request.status} />
+            {steps.map((step, index) => (
+              <View key={step} style={[ui.row, { paddingVertical: 8 }]}>
+                <Ionicons
+                  name={
+                    index < activeIndex
+                      ? "checkmark-circle"
+                      : index === activeIndex
+                        ? "radio-button-on"
+                        : "ellipse-outline"
+                  }
+                  size={25}
+                  color={index <= activeIndex ? colors.accent : colors.muted}
+                />
+                <Text style={[ui.body, { flex: 1 }]}>
+                  {labels[index]}
+                  {index === activeIndex ? " · Şu an" : ""}
                 </Text>
-
-                {isCompleted ? (
-                  <Text style={styles.distanceText}>
-                    Usta adresinize ulaştı ve servis süreci tamamlandı.
-                  </Text>
-                ) : (
-                  <>
-                    <Text style={styles.distanceText}>
-                      Mesafe: {distanceKm < 1 ? `${Math.round(distanceKm * 1000)} m` : `${distanceKm.toFixed(1)} km`}
-                    </Text>
-                    <Text style={styles.distanceText}>Tahmini varış: {etaMinutes} dk</Text>
-                  </>
-                )}
               </View>
-            </>
-          ) : null}
-
-          {hasCustomerLocation ? (
-            <TouchableOpacity style={styles.mapButton} onPress={openCustomerMap}>
-              <Text style={styles.mapButtonText}>📍 Müşteri Konumunu Aç</Text>
-            </TouchableOpacity>
-          ) : null}
-
-          {hasTechnicianLocation ? (
-            <TouchableOpacity style={styles.mapButton} onPress={openTechnicianMap}>
-              <Text style={styles.mapButtonText}>🚐 Usta Konumunu Aç</Text>
-            </TouchableOpacity>
-          ) : null}
-
-          {hasCustomerLocation && hasTechnicianLocation && !isCompleted ? (
-            <TouchableOpacity style={styles.routeButton} onPress={openRouteMap}>
-              <Text style={styles.routeButtonText}>🗺️ Yol Tarifi Aç</Text>
-            </TouchableOpacity>
-          ) : null}
-        </View>
-
-        {isCompleted ? (
-          <View style={styles.reviewCard}>
-            <Text style={styles.reviewTitle}>
-              {hasReview ? 'Değerlendirmen' : 'Servisi Değerlendir'}
-            </Text>
-
-            <Text style={styles.reviewSubtitle}>
-              Aldığın hizmeti 1-5 yıldız arasında puanla.
-            </Text>
-
-            <View style={styles.starRow}>
-              {[1, 2, 3, 4, 5].map((star) => (
-                <TouchableOpacity key={star} onPress={() => setSelectedRating(star)}>
-                  <Text style={[styles.star, selectedRating >= star && styles.starActive]}>
-                    ★
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-
-            <TextInput
-              style={styles.reviewInput}
-              placeholder="Yorum yazmak ister misin?"
-              value={reviewComment}
-              onChangeText={setReviewComment}
-              multiline
-            />
-
-            <TouchableOpacity style={styles.reviewButton} onPress={submitReview}>
-              <Text style={styles.reviewButtonText}>
-                {hasReview ? 'Değerlendirmeyi Güncelle' : 'Değerlendirmeyi Gönder'}
-              </Text>
-            </TouchableOpacity>
-
-            {hasReview ? (
-              <Text style={styles.savedReviewText}>
-                Kaydedilen puan: {request.rating}/5
-              </Text>
-            ) : null}
+            ))}
           </View>
-        ) : null}
-      </View>
-    </ScrollView>
+          <View style={ui.card}>
+            <Text style={ui.heading}>Profesyonel bilgileri</Text>
+            <Text style={ui.body}>
+              {request.technician_name ??
+                "Henüz profesyonel bilgisi paylaşılmadı."}
+            </Text>
+            {request.technician_phone && (
+              <Button
+                secondary
+                title="Profesyoneli ara"
+                onPress={() => void open(`tel:${request.technician_phone}`)}
+              />
+            )}
+          </View>
+          <View style={ui.card}>
+            <Text style={ui.heading}>Konum ve hizmet detayları</Text>
+            <Text style={ui.body}>{request.address}</Text>
+            {request.note && <Text style={ui.body}>{request.note}</Text>}
+            {request.photo_url && (
+              <Button
+                secondary
+                title="Talep fotoğrafını aç"
+                onPress={() => void open(request.photo_url!)}
+              />
+            )}
+            {hasCustomer && (
+              <Button
+                secondary
+                title="Hizmet konumunu aç"
+                onPress={() =>
+                  void open(
+                    `https://www.google.com/maps?q=${request.latitude},${request.longitude}`,
+                  )
+                }
+              />
+            )}
+            {hasProfessional && (
+              <Button
+                secondary
+                title="Paylaşılan usta konumunu aç"
+                onPress={() =>
+                  void open(
+                    `https://www.google.com/maps?q=${request.technician_latitude},${request.technician_longitude}`,
+                  )
+                }
+              />
+            )}
+            {distance !== null && request.status !== "Servis tamamlandı" && (
+              <>
+                <Text style={ui.caption}>
+                  Kuş uçuşu mesafe: {distance.toFixed(1)} km. Yaklaşık süre:{" "}
+                  {Math.max(1, Math.ceil((distance / 30) * 60))} dk (trafik ve
+                  gerçek rota dahil değil).
+                </Text>
+                <Button
+                  secondary
+                  title="Yol tarifini aç"
+                  onPress={() =>
+                    void open(
+                      `https://www.google.com/maps/dir/?api=1&origin=${request.technician_latitude},${request.technician_longitude}&destination=${request.latitude},${request.longitude}`,
+                    )
+                  }
+                />
+              </>
+            )}
+          </View>
+          {request.status === "Servis tamamlandı" && (
+            <View style={ui.card}>
+              <Text style={ui.heading}>Hizmeti değerlendirin</Text>
+              <View style={[ui.row, { flexWrap: "wrap" }]}>
+                {[1, 2, 3, 4, 5].map((value) => (
+                  <Pressable
+                    key={value}
+                    accessibilityRole="button"
+                    accessibilityLabel={`${value} yıldız`}
+                    accessibilityState={{ selected: rating === value }}
+                    onPress={() => setRating(value)}
+                    style={{
+                      minHeight: 48,
+                      minWidth: 44,
+                      justifyContent: "center",
+                      alignItems: "center",
+                    }}
+                  >
+                    <Ionicons
+                      name={rating >= value ? "star" : "star-outline"}
+                      size={28}
+                      color={colors.warning}
+                    />
+                  </Pressable>
+                ))}
+              </View>
+              <TextInput
+                accessibilityLabel="Değerlendirme yorumu"
+                style={ui.input}
+                multiline
+                placeholder="Deneyiminizi paylaşın (isteğe bağlı)"
+                value={comment}
+                onChangeText={setComment}
+              />
+              <Button
+                title="Değerlendirmeyi kaydet"
+                onPress={review}
+                loading={saving}
+                disabled={!rating}
+              />
+            </View>
+          )}
+        </>
+      )}
+      {!!message && <State title={message} />}
+    </Screen>
   );
 }
-
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#F8FAFC' },
-  content: { padding: 20, paddingTop: 60, paddingBottom: 120 },
-
-  title: { fontSize: 34, fontWeight: '800', color: '#0F172A' },
-  subtitle: { marginTop: 10, color: '#64748B', fontSize: 18 },
-
-  card: {
-    marginTop: 24,
-    backgroundColor: '#FFFFFF',
-    borderRadius: 24,
-    padding: 20,
-  },
-
-  stepRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 22,
-  },
-
-  circle: {
-    width: 18,
-    height: 18,
-    borderRadius: 999,
-    backgroundColor: '#CBD5E1',
-    marginRight: 16,
-  },
-
-  circleActive: { backgroundColor: '#10B981' },
-
-  stepText: {
-    fontSize: 18,
-    color: '#64748B',
-    fontWeight: '700',
-  },
-
-  stepTextActive: { color: '#0F172A' },
-
-  infoCard: {
-    marginTop: 24,
-    backgroundColor: '#0F172A',
-    borderRadius: 24,
-    padding: 20,
-  },
-
-  infoTitle: { color: '#FFFFFF', fontSize: 22, fontWeight: '800' },
-  infoText: { color: '#CBD5E1', marginTop: 12, fontSize: 16 },
-  callText: { color: '#38BDF8', marginTop: 12, fontSize: 16, fontWeight: '800' },
-
-  mapCard: {
-    marginTop: 24,
-    backgroundColor: '#FFFFFF',
-    borderRadius: 24,
-    padding: 20,
-  },
-
-  mapTitle: { fontSize: 22, fontWeight: '800', color: '#0F172A' },
-  mapText: { marginTop: 10, color: '#64748B', fontSize: 16 },
-
-  miniMap: {
-    height: 170,
-    backgroundColor: '#E0F2FE',
-    borderRadius: 22,
-    marginTop: 16,
-    position: 'relative',
-    overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: '#BAE6FD',
-  },
-
-  mapLine: {
-    position: 'absolute',
-    left: 56,
-    right: 56,
-    top: 84,
-    height: 4,
-    borderRadius: 4,
-    backgroundColor: '#06B6D4',
-  },
-
-  pinWrap: {
-    position: 'absolute',
-    alignItems: 'center',
-    minWidth: 70,
-  },
-
-  customerPin: { left: 18, top: 54 },
-  pinIcon: { fontSize: 34 },
-
-  customerLabel: {
-    marginTop: 6,
-    fontSize: 14,
-    fontWeight: '800',
-    color: '#0F172A',
-  },
-
-  techLabel: {
-    marginTop: 6,
-    fontSize: 14,
-    fontWeight: '800',
-    color: '#0F172A',
-  },
-
-  techBubble: {
-    backgroundColor: '#FFFFFF',
-    paddingVertical: 4,
-    paddingHorizontal: 10,
-    borderRadius: 10,
-    marginBottom: 4,
-    shadowColor: '#000',
-    shadowOpacity: 0.12,
-    shadowRadius: 6,
-    elevation: 2,
-  },
-
-  techBubbleText: {
-    color: '#0F172A',
-    fontSize: 13,
-    fontWeight: '800',
-  },
-
-  distanceBox: {
-    marginTop: 16,
-    backgroundColor: '#E0F2FE',
-    padding: 16,
-    borderRadius: 18,
-  },
-
-  completedBox: { backgroundColor: '#DCFCE7' },
-
-  distanceTitle: {
-    color: '#0F172A',
-    fontSize: 18,
-    fontWeight: '800',
-  },
-
-  distanceText: {
-    color: '#0369A1',
-    marginTop: 8,
-    fontSize: 16,
-    fontWeight: '700',
-  },
-
-  mapButton: {
-    marginTop: 14,
-    backgroundColor: '#0F172A',
-    padding: 16,
-    borderRadius: 16,
-  },
-
-  mapButtonText: {
-    color: '#FFFFFF',
-    textAlign: 'center',
-    fontWeight: '800',
-  },
-
-  routeButton: {
-    marginTop: 14,
-    backgroundColor: '#06B6D4',
-    padding: 16,
-    borderRadius: 16,
-  },
-
-  routeButtonText: {
-    color: '#FFFFFF',
-    textAlign: 'center',
-    fontWeight: '800',
-  },
-
-  reviewCard: {
-    marginTop: 24,
-    backgroundColor: '#FFFFFF',
-    borderRadius: 24,
-    padding: 20,
-  },
-
-  reviewTitle: {
-    fontSize: 24,
-    fontWeight: '800',
-    color: '#0F172A',
-  },
-
-  reviewSubtitle: {
-    marginTop: 8,
-    color: '#64748B',
-    fontSize: 16,
-  },
-
-  starRow: {
-    flexDirection: 'row',
-    marginTop: 18,
-    gap: 10,
-  },
-
-  star: {
-    fontSize: 36,
-    color: '#CBD5E1',
-  },
-
-  starActive: {
-    color: '#F59E0B',
-  },
-
-  reviewInput: {
-    marginTop: 18,
-    minHeight: 100,
-    backgroundColor: '#F1F5F9',
-    borderRadius: 18,
-    padding: 16,
-    fontSize: 16,
-    textAlignVertical: 'top',
-  },
-
-  reviewButton: {
-    marginTop: 16,
-    backgroundColor: '#F59E0B',
-    padding: 16,
-    borderRadius: 16,
-  },
-
-  reviewButtonText: {
-    color: '#FFFFFF',
-    fontWeight: '800',
-    textAlign: 'center',
-  },
-
-  savedReviewText: {
-    marginTop: 12,
-    color: '#64748B',
-    fontWeight: '700',
-    textAlign: 'center',
-  },
-});

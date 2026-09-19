@@ -1,12 +1,12 @@
 {
   "expo": {
-    "name": "klimaci-hakki-usta",
-    "slug": "klimaci-hakki-usta",
+    "name": "UstaYanımda",
+    "slug": "ustayanimda",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "klimacihakkiusta",
-    "userInterfaceStyle": "automatic",
+    "scheme": "ustayanimda",
+    "userInterfaceStyle": "light",
     "newArchEnabled": true,
     "ios": {
       "supportsTablet": true

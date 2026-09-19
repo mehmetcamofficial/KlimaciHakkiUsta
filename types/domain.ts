@@ -1,9 +1,9 @@
 export type RequestStatus =
-  | 'Talep alındı'
-  | 'Usta aranıyor'
-  | 'Usta atandı'
-  | 'Yolda'
-  | 'Servis tamamlandı';
+  | "Talep alındı"
+  | "Usta aranıyor"
+  | "Usta atandı"
+  | "Yolda"
+  | "Servis tamamlandı";
 
 export interface ServiceCategory {
   id: string;
@@ -64,6 +64,7 @@ export interface CreateServiceRequestInput {
   latitude?: number | null;
   longitude?: number | null;
   photoUri?: string | null;
+  photoMimeType?: string | null;
   // Klima-only legacy fields.
   brand?: string | null;
   acType?: string | null;

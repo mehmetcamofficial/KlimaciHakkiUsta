@@ -1,6 +1,6 @@
-import { supabase } from '@/lib/supabase';
-import { SERVICE_CATALOG } from '@/data/service-catalog';
-import type { ServiceCategory, ServiceType } from '@/types/domain';
+import { supabase } from "@/lib/supabase";
+import { SERVICE_CATALOG } from "@/data/service-catalog";
+import type { ServiceCategory, ServiceType } from "@/types/domain";
 
 function localCategories(): ServiceCategory[] {
   return SERVICE_CATALOG.map((entry) => entry.category)
@@ -9,9 +9,13 @@ function localCategories(): ServiceCategory[] {
 }
 
 function localServiceTypes(categorySlug: string): ServiceType[] {
-  const entry = SERVICE_CATALOG.find((item) => item.category.slug === categorySlug);
+  const entry = SERVICE_CATALOG.find(
+    (item) => item.category.slug === categorySlug,
+  );
   if (!entry) return [];
-  return entry.serviceTypes.filter((type) => type.active).sort((a, b) => a.sortOrder - b.sortOrder);
+  return entry.serviceTypes
+    .filter((type) => type.active)
+    .sort((a, b) => a.sortOrder - b.sortOrder);
 }
 
 interface ServiceCategoryRow {
@@ -39,81 +43,74 @@ function mapCategoryRow(row: ServiceCategoryRow): ServiceCategory {
     id: row.id,
     name: row.name,
     slug: row.slug,
-    iconKey: row.icon_key ?? 'help-circle',
-    description: row.description ?? '',
+    iconKey: row.icon_key ?? "help-circle",
+    description: row.description ?? "",
     active: row.active ?? true,
     sortOrder: row.sort_order ?? 0,
   };
 }
 
-function mapServiceTypeRow(row: ServiceTypeRow, categorySlug: string): ServiceType {
+function mapServiceTypeRow(
+  row: ServiceTypeRow,
+  categorySlug: string,
+): ServiceType {
   return {
     id: row.id,
     categoryId: row.category_id,
     categorySlug,
     name: row.name,
     slug: row.slug,
-    description: row.description ?? '',
+    description: row.description ?? "",
     active: row.active ?? true,
     sortOrder: row.sort_order ?? 0,
   };
 }
 
-/**
- * Reads categories from Supabase (`service_categories`) when available, and
- * transparently falls back to the local seed catalog otherwise — e.g. when
- * the marketplace migration hasn't been applied to the remote database yet,
- * or the device is offline. This keeps the discovery screen usable in every
- * state instead of showing a blank screen.
- */
-export async function fetchServiceCategories(): Promise<ServiceCategory[]> {
-  try {
-    const { data, error } = await supabase
-      .from('service_categories')
-      .select('*')
-      .eq('active', true)
-      .order('sort_order', { ascending: true });
-
-    if (error || !data || data.length === 0) {
-      return localCategories();
-    }
-
-    return data.map(mapCategoryRow);
-  } catch {
-    return localCategories();
-  }
+export interface CatalogResult {
+  categories: ServiceCategory[];
+  serviceTypes: ServiceType[];
+  source: "remote" | "local";
 }
-
-export async function fetchServiceCategoryBySlug(slug: string): Promise<ServiceCategory | null> {
-  const categories = await fetchServiceCategories();
-  return categories.find((category) => category.slug === slug) ?? null;
-}
-
-export async function fetchServiceTypesByCategorySlug(categorySlug: string): Promise<ServiceType[]> {
+/** Read the catalog as one snapshot: never mix remote UUIDs and fallback identifiers. */
+export async function fetchCatalog(): Promise<CatalogResult> {
   try {
-    const { data: categoryRow, error: categoryError } = await supabase
-      .from('service_categories')
-      .select('id')
-      .eq('slug', categorySlug)
-      .maybeSingle();
-
-    if (categoryError || !categoryRow) {
-      return localServiceTypes(categorySlug);
+    const [categories, types] = await Promise.all([
+      supabase
+        .from("service_categories")
+        .select("*")
+        .eq("active", true)
+        .order("sort_order"),
+      supabase
+        .from("service_types")
+        .select("*")
+        .eq("active", true)
+        .order("sort_order"),
+    ]);
+    const error = categories.error ?? types.error;
+    if (error) {
+      // Only absent migration uses the bundled catalog. Permission/network errors remain visible.
+      if (!["42P01", "PGRST205"].includes(error.code))
+        throw new Error("Hizmetler şu anda yüklenemiyor.");
+      return {
+        categories: localCategories(),
+        serviceTypes: SERVICE_CATALOG.flatMap((entry) =>
+          localServiceTypes(entry.category.slug),
+        ),
+        source: "local",
+      };
     }
-
-    const { data, error } = await supabase
-      .from('service_types')
-      .select('*')
-      .eq('category_id', categoryRow.id)
-      .eq('active', true)
-      .order('sort_order', { ascending: true });
-
-    if (error || !data || data.length === 0) {
-      return localServiceTypes(categorySlug);
-    }
-
-    return data.map((row) => mapServiceTypeRow(row, categorySlug));
-  } catch {
-    return localServiceTypes(categorySlug);
+    const mapped = (categories.data ?? []).map(mapCategoryRow);
+    return {
+      categories: mapped,
+      serviceTypes: (types.data ?? []).flatMap((row) => {
+        const category = mapped.find((item) => item.id === row.category_id);
+        return category ? [mapServiceTypeRow(row, category.slug)] : [];
+      }),
+      source: "remote",
+    };
+  } catch (error) {
+    throw error instanceof Error
+      ? error
+      : new Error("Hizmetler şu anda yüklenemiyor.");
   }
 }

@@ -1,301 +1,249 @@
-import React, { useEffect, useState } from 'react';
-import * as Location from 'expo-location';
-import * as ImagePicker from 'expo-image-picker';
-import {
-  ActivityIndicator,
-  Alert,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View,
-} from 'react-native';
+import React, { useRef, useState } from "react";
+import { Image, Text, TextInput, View } from "react-native";
+import * as Location from "expo-location";
+import * as ImagePicker from "expo-image-picker";
+import { useRouter } from "expo-router";
+import { Button, Screen, State } from "@/components/ui/marketplace";
+import { useCatalog } from "@/hooks/use-catalog";
+import { createServiceRequest } from "@/services/requests";
+import { ui } from "@/theme";
 
-import { fetchServiceCategoryBySlug, fetchServiceTypesByCategorySlug } from '@/services/categories';
-import { createServiceRequest } from '@/services/requests';
-import type { ServiceCategory, ServiceType } from '@/types/domain';
-
-const acTypes = ['Split Klima', 'Salon Tipi', 'VRF', 'Kaset Tipi'];
-
-interface ServiceRequestFormProps {
+export function ServiceRequestForm({
+  categorySlug,
+  serviceTypeSlug,
+}: {
   categorySlug?: string;
   serviceTypeSlug?: string;
-}
-
-export function ServiceRequestForm({ categorySlug, serviceTypeSlug }: ServiceRequestFormProps) {
-  const resolvedCategorySlug = categorySlug ?? 'klima';
-
-  const [catalogLoading, setCatalogLoading] = useState(true);
-  const [catalogError, setCatalogError] = useState(false);
-  const [category, setCategory] = useState<ServiceCategory | null>(null);
-  const [serviceTypes, setServiceTypes] = useState<ServiceType[]>([]);
-  const [selectedServiceType, setSelectedServiceType] = useState<ServiceType | null>(null);
-
-  const [acType, setAcType] = useState('');
-  const [brand, setBrand] = useState('');
-  const [phone, setPhone] = useState('');
-  const [address, setAddress] = useState('');
-  const [note, setNote] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [latitude, setLatitude] = useState<number | null>(null);
-  const [longitude, setLongitude] = useState<number | null>(null);
-  const [photoUri, setPhotoUri] = useState<string | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-
-    async function loadCatalog() {
-      setCatalogLoading(true);
-      setCatalogError(false);
-
-      try {
-        const [categoryResult, typesResult] = await Promise.all([
-          fetchServiceCategoryBySlug(resolvedCategorySlug),
-          fetchServiceTypesByCategorySlug(resolvedCategorySlug),
-        ]);
-
-        if (cancelled) return;
-
-        setCategory(categoryResult);
-        setServiceTypes(typesResult);
-
-        const preselected = serviceTypeSlug
-          ? typesResult.find((type) => type.slug === serviceTypeSlug)
-          : undefined;
-        setSelectedServiceType(preselected ?? typesResult[0] ?? null);
-      } catch {
-        if (!cancelled) setCatalogError(true);
-      } finally {
-        if (!cancelled) setCatalogLoading(false);
-      }
-    }
-
-    loadCatalog();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [resolvedCategorySlug, serviceTypeSlug]);
-
+}) {
+  const router = useRouter();
+  const {
+    catalog,
+    loading: catalogLoading,
+    error: catalogError,
+    retry,
+  } = useCatalog();
+  const category = catalog?.categories.find(
+    (item) => item.slug === categorySlug,
+  );
+  const serviceType = catalog?.serviceTypes.find(
+    (item) => item.categoryId === category?.id && item.slug === serviceTypeSlug,
+  );
+  const [phone, setPhone] = useState("");
+  const [address, setAddress] = useState("");
+  const [description, setDescription] = useState("");
+  const [brand, setBrand] = useState("");
+  const [acType, setAcType] = useState("");
+  const [location, setLocation] = useState<{
+    latitude: number;
+    longitude: number;
+  } | null>(null);
+  const [photo, setPhoto] = useState<ImagePicker.ImagePickerAsset | null>(null);
+  const [locating, setLocating] = useState(false);
+  const [picking, setPicking] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [message, setMessage] = useState("");
+  const [requestNo, setRequestNo] = useState("");
+  const submitting = useRef(false);
   async function getLocation() {
-    const { status } = await Location.requestForegroundPermissionsAsync();
-
-    if (status !== 'granted') {
-      Alert.alert('Konum İzni Gerekli', 'Konum almak için izin vermelisin.');
-      return;
-    }
-
-    const location = await Location.getCurrentPositionAsync({});
-    setLatitude(location.coords.latitude);
-    setLongitude(location.coords.longitude);
-    Alert.alert('Konum Alındı', 'GPS konumun servis talebine eklendi.');
-  }
-
-  async function pickImage() {
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ['images'],
-      quality: 0.8,
-    });
-
-    if (!result.canceled) {
-      setPhotoUri(result.assets[0].uri);
-    }
-  }
-
-  async function submitRequest() {
-    if (!phone || !address || !selectedServiceType) {
-      Alert.alert('Eksik Bilgi', 'Telefon, adres ve hizmet tipi zorunludur.');
-      return;
-    }
-
-    setLoading(true);
-
+    setLocating(true);
+    setMessage("");
     try {
-      const { requestNo } = await createServiceRequest({
-        categorySlug: resolvedCategorySlug,
-        categoryId: category?.id && category.id !== resolvedCategorySlug ? category.id : null,
-        serviceTypeSlug: selectedServiceType.slug,
-        serviceTypeId:
-          selectedServiceType.id && selectedServiceType.id !== `${resolvedCategorySlug}:${selectedServiceType.slug}`
-            ? selectedServiceType.id
-            : null,
-        serviceTypeName: selectedServiceType.name,
-        description: note,
-        phone,
-        address,
-        latitude,
-        longitude,
-        photoUri,
-        brand: category?.slug === 'klima' ? brand : null,
-        acType: category?.slug === 'klima' ? acType : null,
+      const permission = await Location.requestForegroundPermissionsAsync();
+      if (permission.status !== "granted") {
+        setMessage(
+          "Konum izni verilmedi. Adresinizi yazarak devam edebilirsiniz.",
+        );
+        return;
+      }
+      const result = await Location.getCurrentPositionAsync({
+        accuracy: Location.Accuracy.Balanced,
       });
-
-      Alert.alert('Talep Oluşturuldu', `Talep No: ${requestNo}`);
-
-      setBrand('');
-      setAcType('');
-      setPhone('');
-      setAddress('');
-      setNote('');
-      setLatitude(null);
-      setLongitude(null);
-      setPhotoUri(null);
-    } catch (error: any) {
-      Alert.alert('Kayıt Hatası', error.message || 'Talep kaydedilemedi.');
+      setLocation({
+        latitude: result.coords.latitude,
+        longitude: result.coords.longitude,
+      });
+    } catch {
+      setMessage("Konum alınamadı. Tekrar deneyin veya adresinizi yazın.");
     } finally {
-      setLoading(false);
+      setLocating(false);
     }
   }
-
-  if (catalogLoading) {
-    return (
-      <View style={styles.centerState}>
-        <ActivityIndicator size="large" color="#06B6D4" />
-        <Text style={styles.centerStateText}>Hizmet bilgileri yükleniyor...</Text>
-      </View>
-    );
+  async function pickPhoto() {
+    setPicking(true);
+    setMessage("");
+    try {
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ["images"],
+        quality: 0.8,
+      });
+      if (!result.canceled) setPhoto(result.assets[0]);
+    } catch {
+      setMessage("Fotoğraf seçilemedi. Lütfen tekrar deneyin.");
+    } finally {
+      setPicking(false);
+    }
   }
-
-  if (catalogError || !category) {
+  async function submit() {
+    if (submitting.current || !category || !serviceType) return;
+    if (phone.replace(/\D/g, "").length < 10 || !address.trim()) {
+      setMessage("Geçerli bir telefon numarası ve adres girin.");
+      return;
+    }
+    submitting.current = true;
+    setSaving(true);
+    setMessage("");
+    try {
+      const result = await createServiceRequest({
+        categorySlug: category.slug,
+        categoryId: catalog?.source === "remote" ? category.id : null,
+        serviceTypeSlug: serviceType.slug,
+        serviceTypeId: catalog?.source === "remote" ? serviceType.id : null,
+        serviceTypeName: serviceType.name,
+        description: description.trim(),
+        phone: phone.trim(),
+        address: address.trim(),
+        ...location,
+        photoUri: photo?.uri,
+        photoMimeType: photo?.mimeType,
+        brand: category.slug === "klima" ? brand : null,
+        acType: category.slug === "klima" ? acType : null,
+      });
+      setRequestNo(result.requestNo);
+    } catch {
+      setMessage(
+        "Talep kaydedilemedi. Bilgileriniz korunuyor; bağlantınızı kontrol edip tekrar deneyin.",
+      );
+    } finally {
+      submitting.current = false;
+      setSaving(false);
+    }
+  }
+  if (requestNo)
     return (
-      <View style={styles.centerState}>
-        <Text style={styles.centerStateTitle}>Hizmet bilgisi alınamadı</Text>
-        <Text style={styles.centerStateText}>
-          Lütfen internet bağlantını kontrol edip tekrar dener misin?
+      <Screen insetTop={false}>
+        <Text style={ui.title}>Talebiniz oluşturuldu</Text>
+        <Text selectable style={ui.body}>
+          Talep no: {requestNo}
         </Text>
-      </View>
+        <Button
+          title="Talebi Takip Et"
+          onPress={() =>
+            router.replace({
+              pathname: "/(tabs)/tracking",
+              params: { requestNo },
+            })
+          }
+        />
+      </Screen>
     );
-  }
-
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      <Text style={styles.title}>Talep Oluştur</Text>
-      <Text style={styles.subtitle}>
-        {category.name}
-        {selectedServiceType ? ` • ${selectedServiceType.name}` : ''}
-      </Text>
-
-      <Text style={styles.label}>Hizmet Tipi</Text>
-      {serviceTypes.length === 0 ? (
-        <Text style={styles.emptyText}>Bu kategoride henüz hizmet tipi tanımlanmadı.</Text>
+    <Screen insetTop={false}>
+      {catalogLoading ? (
+        <State loading title="Hizmet bilgileri yükleniyor…" />
+      ) : catalogError ? (
+        <State title="Hizmet bilgisi alınamadı." retry={retry} />
+      ) : !category || !serviceType ? (
+        <State title="Hizmet bulunamadı. Ana sayfadan yeniden seçim yapın." />
       ) : (
-        <View style={styles.chipWrap}>
-          {serviceTypes.map((item) => (
-            <TouchableOpacity
-              key={item.id}
-              style={[styles.chip, selectedServiceType?.id === item.id && styles.chipActive]}
-              onPress={() => setSelectedServiceType(item)}>
-              <Text
-                style={[
-                  styles.chipText,
-                  selectedServiceType?.id === item.id && styles.chipTextActive,
-                ]}>
-                {item.name}
-              </Text>
-            </TouchableOpacity>
-          ))}
-        </View>
-      )}
-
-      {category.slug === 'klima' ? (
         <>
-          <Text style={styles.label}>Klima Tipi</Text>
-          <View style={styles.chipWrap}>
-            {acTypes.map((item) => (
-              <TouchableOpacity
-                key={item}
-                style={[styles.chip, acType === item && styles.chipActive]}
-                onPress={() => setAcType(item)}>
-                <Text style={[styles.chipText, acType === item && styles.chipTextActive]}>
-                  {item}
-                </Text>
-              </TouchableOpacity>
-            ))}
+          <View style={ui.card}>
+            <Text style={ui.caption}>1 — Hizmet</Text>
+            <Text style={ui.heading}>
+              {category.name} · {serviceType.name}
+            </Text>
           </View>
-
+          <Text style={ui.heading}>2 — Sorunu anlatın</Text>
           <TextInput
-            style={styles.input}
-            placeholder="Klima Markası"
-            value={brand}
-            onChangeText={setBrand}
+            accessibilityLabel="Sorunun açıklaması"
+            editable={!saving}
+            style={[ui.input, { minHeight: 112, textAlignVertical: "top" }]}
+            multiline
+            placeholder="Neye ihtiyacınız var? Detayları paylaşın."
+            value={description}
+            onChangeText={setDescription}
+          />
+          {category.slug === "klima" && (
+            <View style={ui.card}>
+              <Text style={ui.caption}>Klima bilgileri (isteğe bağlı)</Text>
+              <TextInput
+                accessibilityLabel="Klima markası"
+                editable={!saving}
+                style={ui.input}
+                placeholder="Klima markası"
+                value={brand}
+                onChangeText={setBrand}
+              />
+              <TextInput
+                accessibilityLabel="Klima tipi"
+                editable={!saving}
+                style={ui.input}
+                placeholder="Klima tipi (Split, Salon, VRF…)"
+                value={acType}
+                onChangeText={setAcType}
+              />
+            </View>
+          )}
+          <Text style={ui.heading}>3 — Fotoğraf ekleyin</Text>
+          <Text style={ui.caption}>
+            İsteğe bağlı. Sorunun anlaşılmasına yardımcı olur.
+          </Text>
+          {photo && (
+            <Image
+              accessibilityLabel="Seçilen hizmet fotoğrafı"
+              source={{ uri: photo.uri }}
+              style={{ height: 160, borderRadius: 12, width: "100%" }}
+            />
+          )}
+          <Button
+            title={photo ? "Fotoğrafı değiştir" : "Fotoğraf seç"}
+            onPress={pickPhoto}
+            secondary
+            loading={picking}
+            disabled={saving}
+          />
+          <Text style={ui.heading}>4 — Konum</Text>
+          <TextInput
+            accessibilityLabel="Adres (zorunlu)"
+            editable={!saving}
+            style={ui.input}
+            multiline
+            placeholder="Açık adresiniz (zorunlu)"
+            value={address}
+            onChangeText={setAddress}
+          />
+          <Button
+            title={location ? "Konum alındı · Yenile" : "Konumumu al"}
+            onPress={getLocation}
+            secondary
+            loading={locating}
+            disabled={saving}
+          />
+          <Text style={ui.heading}>5 — İletişim</Text>
+          <TextInput
+            accessibilityLabel="Telefon numarası (zorunlu)"
+            editable={!saving}
+            style={ui.input}
+            placeholder="Telefon numaranız"
+            keyboardType="phone-pad"
+            autoComplete="tel"
+            value={phone}
+            onChangeText={setPhone}
+          />
+          {!!message && <State title={message} />}
+          <Button
+            title={
+              saving
+                ? photo
+                  ? "Fotoğraf ve talep kaydediliyor…"
+                  : "Talep kaydediliyor…"
+                : "Talep Oluştur"
+            }
+            onPress={submit}
+            loading={saving}
+            disabled={locating || picking}
           />
         </>
-      ) : null}
-
-      <TextInput
-        style={styles.input}
-        placeholder="Telefon Numaranız"
-        value={phone}
-        onChangeText={setPhone}
-        keyboardType="phone-pad"
-      />
-      <TextInput style={styles.input} placeholder="Adres" value={address} onChangeText={setAddress} />
-
-      <TextInput
-        style={[styles.input, styles.multiline]}
-        placeholder="Ek açıklama / özel not"
-        value={note}
-        onChangeText={setNote}
-        multiline
-      />
-
-      <TouchableOpacity style={styles.darkButton} onPress={pickImage}>
-        <Text style={styles.darkButtonText}>
-          {photoUri ? '📷 Fotoğraf Seçildi' : '📷 Fotoğraf Ekle'}
-        </Text>
-      </TouchableOpacity>
-
-      <TouchableOpacity style={styles.darkButton} onPress={getLocation}>
-        <Text style={styles.darkButtonText}>
-          {latitude && longitude ? '📍 Konum Alındı' : '📍 Konumumu Al'}
-        </Text>
-      </TouchableOpacity>
-
-      {latitude && longitude ? (
-        <Text style={styles.locationText}>
-          Konum: {latitude.toFixed(5)}, {longitude.toFixed(5)}
-        </Text>
-      ) : null}
-
-      <TouchableOpacity
-        style={[styles.button, loading && styles.buttonDisabled]}
-        onPress={submitRequest}
-        disabled={loading}>
-        <Text style={styles.buttonText}>{loading ? 'Gönderiliyor...' : 'Servis Talebi Gönder'}</Text>
-      </TouchableOpacity>
-    </ScrollView>
+      )}
+    </Screen>
   );
 }
-
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#F8FAFC' },
-  content: { padding: 20, paddingBottom: 120 },
-  centerState: {
-    flex: 1,
-    backgroundColor: '#F8FAFC',
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 32,
-    gap: 12,
-  },
-  centerStateTitle: { fontSize: 20, fontWeight: '800', color: '#0F172A', textAlign: 'center' },
-  centerStateText: { fontSize: 15, color: '#64748B', textAlign: 'center' },
-  title: { marginTop: 48, fontSize: 32, fontWeight: '800', color: '#0F172A' },
-  subtitle: { marginTop: 8, marginBottom: 24, fontSize: 16, lineHeight: 24, color: '#64748B' },
-  label: { marginTop: 18, marginBottom: 10, fontSize: 17, fontWeight: '800', color: '#0F172A' },
-  emptyText: { fontSize: 15, color: '#64748B' },
-  chipWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
-  chip: { backgroundColor: '#E2E8F0', paddingVertical: 12, paddingHorizontal: 16, borderRadius: 999 },
-  chipActive: { backgroundColor: '#06B6D4' },
-  chipText: { color: '#334155', fontWeight: '700' },
-  chipTextActive: { color: '#FFFFFF' },
-  input: { backgroundColor: '#FFFFFF', borderRadius: 18, padding: 18, marginTop: 14, fontSize: 16 },
-  multiline: { minHeight: 120, textAlignVertical: 'top' },
-  darkButton: { backgroundColor: '#0F172A', padding: 18, borderRadius: 18, marginTop: 16 },
-  darkButtonText: { color: '#FFFFFF', textAlign: 'center', fontWeight: '800', fontSize: 16 },
-  locationText: { marginTop: 10, color: '#64748B', fontWeight: '700' },
-  button: { backgroundColor: '#06B6D4', padding: 22, borderRadius: 22, marginTop: 20 },
-  buttonDisabled: { opacity: 0.6 },
-  buttonText: { color: '#FFFFFF', textAlign: 'center', fontWeight: '800', fontSize: 18 },
-});
