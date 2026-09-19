@@ -3,14 +3,12 @@ import * as Location from "expo-location";
 import {
   Alert,
   Linking,
-  ScrollView,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
 } from "react-native";
 
-import { RequireRole } from "@/components/auth-guard";
 import {
   getRequestPhotoUrl,
   listRequestsForAdmin,
@@ -36,7 +34,14 @@ const statuses = [
   "Servis tamamlandı",
 ];
 
-function AdminPanel() {
+/**
+ * The pre-2.5C "Usta Paneli" operational panel — live technician location
+ * sharing and status updates — moved unchanged under the new admin shell
+ * as the "Operasyon" sidebar item. Business logic is untouched; only the
+ * outer RequireRole wrapper and full-screen chrome were removed since
+ * app/admin/_layout.tsx now provides both.
+ */
+export default function OperationsPanel() {
   const [requests, setRequests] = useState<RequestRow[]>([]);
   const [watchingId, setWatchingId] = useState<number | null>(null);
   const [subscription, setSubscription] =
@@ -45,7 +50,7 @@ function AdminPanel() {
   useEffect(() => {
     loadRequests();
 
-    const unsubscribe = subscribeRequests("admin-requests", loadRequests);
+    const unsubscribe = subscribeRequests("admin-operations", loadRequests);
 
     return () => {
       unsubscribe();
@@ -172,10 +177,10 @@ function AdminPanel() {
   }
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      <Text style={styles.title}>Usta Paneli</Text>
+    <View style={styles.content}>
+      <Text style={styles.title}>Operasyon</Text>
       <Text style={styles.subtitle}>
-        Geçici operasyon paneli · Yalnızca admin rolüne erişim izni verilir.
+        Canlı konum paylaşımı ve durum güncellemeleri.
       </Text>
 
       {requests.map((item) => {
@@ -336,22 +341,13 @@ function AdminPanel() {
           <Text style={styles.emptyText}>Henüz servis talebi yok.</Text>
         </View>
       )}
-    </ScrollView>
-  );
-}
-
-export default function AdminScreen() {
-  return (
-    <RequireRole role="admin">
-      <AdminPanel />
-    </RequireRole>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#F8FAFC" },
-  content: { padding: 20, paddingBottom: 120 },
-  title: { marginTop: 48, fontSize: 32, fontWeight: "800", color: "#0F172A" },
+  content: { gap: 0 },
+  title: { fontSize: 28, fontWeight: "800", color: "#0F172A" },
   subtitle: { marginTop: 8, marginBottom: 24, fontSize: 16, color: "#64748B" },
   card: {
     backgroundColor: "#FFFFFF",

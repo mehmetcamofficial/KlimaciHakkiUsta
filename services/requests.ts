@@ -282,6 +282,38 @@ export async function listRequestsForAdmin(): Promise<RequestRow[]> {
   return data ?? [];
 }
 
+/**
+ * A single request by id, for the admin request-detail screen. Like
+ * listRequestsForAdmin, this is unfiltered by owner and relies entirely on
+ * RLS: a genuine admin can read any row, anyone else gets none regardless
+ * of this query.
+ */
+export async function getRequestForAdmin(id: number): Promise<RequestRow | null> {
+  const { data, error } = await supabase
+    .from("service_requests")
+    .select("*")
+    .eq("id", id)
+    .maybeSingle();
+  if (error) throw error;
+  return data;
+}
+
+/**
+ * An exact row count via PostgREST's `count: "exact", head: true` (no rows
+ * transferred), scoped by RLS the same way listRequestsForAdmin is. Used
+ * for the dashboard's totals so they reflect the real table, not just
+ * whatever fits under listRequestsForAdmin's 50-row page.
+ */
+export async function countRequestsForAdmin(filter?: { status?: string }): Promise<number> {
+  let query = supabase.from("service_requests").select("*", { count: "exact", head: true });
+  if (filter?.status) {
+    query = query.eq("status", filter.status);
+  }
+  const { count, error } = await query;
+  if (error) throw error;
+  return count ?? 0;
+}
+
 /** A customer looking up their own request by number (Takip). */
 export async function getOwnRequest(
   requestNo: string,
