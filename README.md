@@ -1,497 +1,130 @@
-# Klimacı Hakkı Usta → Çoklu Hizmet Platformu
-
-> **Durum:** Aktif yeniden mimarileştirme / MVP planlama  
-> **Mevcut sürüm:** Klima servis talebi prototipi  
-> **Hedef:** Klima ile sınırlı olmayan; müşterileri yerel profesyonellerle buluşturan çoklu hizmet platformu.
-
-## 1. Ürün vizyonu
-
-Proje ilk olarak klima servis talebi uygulaması olarak geliştirildi. Mevcut prototipte servis talebi oluşturma, fotoğraf yükleme, konum alma, Supabase'e kayıt, talep takibi, yönetici ekranı, usta konumu ve müşteri değerlendirmesi gibi temel akışlar bulunuyor.
-
-Yeni hedef, bu altyapıyı tek bir klima ustasına bağlı yapıdan çıkarıp **müşteri + profesyonel/usta + admin** rollerine sahip, kategori bazlı yerel hizmet platformuna dönüştürmektir.
-
-Temel kullanıcı akışı:
-
-```text
-İhtiyaç
-  ↓
-Hizmet kategorisi
-  ↓
-Hizmet / sorun tipi
-  ↓
-Açıklama + fotoğraf + konum
-  ↓
-Servis talebi
-  ↓
-Uygun profesyonel / atama
-  ↓
-İş takibi
-  ↓
-Tamamlama
-  ↓
-Puan + yorum
-```
-
-## 2. Başlangıç hizmet kategorileri
-
-İlk MVP'de öncelikli kategoriler:
-
-- Klima servisi
-- Elektrikçi
-- Su tesisatçısı
-- Kombi / doğalgaz servisi
-- Çilingir
-- Beyaz eşya servisi
-- Boya / badana ve küçük tadilat
-- Mobilya / montaj
-- Temizlik
-- Bahçe / peyzaj
-
-Sonraki genişleme adayları:
-
-- Fayans / seramik
-- Parke
-- Marangoz
-- Cam / PVC / doğrama
-- Panjur / kepenk
-- Çatı / izolasyon
-- Kaynak / demir işleri
-- Güvenlik kamerası / alarm
-- Uydu / TV
-- İnternet / ağ teknik servisi
-- Bilgisayar / telefon teknik servis
-- Güneş enerjisi
-- Otomatik / damla sulama
-- Havuz bakımı
-- İlaçlama
-- Nakliye / küçük eşya taşıma
-- Mobil lastik / akü / yol yardım
-
-Kategoriler uygulama koduna sabitlenmemelidir. Hedef yapıda kategoriler ve hizmet tipleri veritabanından yönetilecek, böylece yeni bir meslek eklemek için uygulama sürümü yayınlamak gerekmeyecektir.
-
-## 3. Roller
-
-### Müşteri
-
-- Kategori ve hizmet seçer.
-- Talep oluşturur.
-- Fotoğraf ve konum ekler.
-- Kendi taleplerini görür.
-- Atanan profesyoneli ve iş durumunu takip eder.
-- İş tamamlandıktan sonra puan ve yorum verir.
-
-### Profesyonel / Usta
-
-- Bir veya birden fazla meslek/hizmet alanına sahip olabilir.
-- Hizmet verdiği bölgeleri ve müsaitliğini yönetir.
-- Kendisine atanmış işleri görür.
-- İş durumunu günceller.
-- Gerekli olduğunda konum paylaşır.
-- Gelecekte takvim ve kazanç ekranlarına sahip olur.
-
-### Admin
-
-- Kategori ve hizmetleri yönetir.
-- Müşteri ve profesyonelleri yönetir.
-- Talepleri izler.
-- Profesyonel ataması yapar.
-- Operasyon, kalite ve değerlendirmeleri takip eder.
-
-## 4. Mevcut teknoloji yığını
-
-| Alan | Teknoloji |
-| --- | --- |
-| Mobil | Expo SDK 54 |
-| UI | React Native 0.81 |
-| React | React 19 |
-| Dil | TypeScript |
-| Routing | Expo Router 6 |
-| Navigation | React Navigation / Bottom Tabs |
-| Backend/BaaS | Supabase |
-| Veritabanı | Supabase Postgres |
-| Realtime | Supabase Realtime |
-| Dosya | Supabase Storage |
-| Konum | expo-location |
-| Fotoğraf | expo-image-picker |
-| Web hedefi | React Native Web / Expo static web |
-| Paket yöneticisi | npm |
-| Lint | ESLint / Expo config |
-
-Expo New Architecture açıktır. Typed Routes ve React Compiler deneyleri de aktiftir.
-
-## 5. Mevcut prototip
-
-Şu an kodda bulunan ana ekranlar:
-
-```text
-app/
-├── (tabs)/
-│   ├── index.tsx       Ana ekran
-│   ├── service.tsx     Servis talebi
-│   ├── tracking.tsx    Talep takibi
-│   ├── profile.tsx     Profil / geçmiş
-│   └── admin.tsx       Operasyon ekranı
-└── _layout.tsx
-
-lib/
-└── supabase.ts
-```
-
-Mevcut prototipte doğrulanmış temel yetenekler:
-
-- Servis talebi oluşturma
-- Klima/arızaya özel form alanları
-- GPS konumu alma
-- Galeriden fotoğraf seçme
-- Supabase Storage'a fotoğraf yükleme
-- Supabase'e servis talebi kaydetme
-- Realtime güncelleme
-- Admin tarafından durum değiştirme
-- Usta konumu paylaşımı
-- Google Maps yönlendirmesi
-- Mesafe / yaklaşık ETA
-- Servis sonrası puan ve yorum
-- Profil ekranında servis geçmişi
-
-Bu kod, çoklu hizmet platformunun başlangıç prototipi olarak korunacaktır.
-
-## 6. Hedef domain modeli
-
-Önerilen temel veri modeli:
-
-```text
-profiles
-├── id
-├── role: CUSTOMER | PROFESSIONAL | ADMIN
-├── full_name
-├── phone
-└── status
-
-service_categories
-├── id
-├── name
-├── slug
-├── icon
-└── active
-
-service_types
-├── id
-├── category_id
-├── name
-└── active
-
-professionals
-├── id
-├── profile_id
-├── bio
-├── rating
-├── availability
-└── verification_status
-
-professional_services
-├── professional_id
-└── service_type_id
-
-service_requests
-├── id
-├── customer_id
-├── category_id
-├── service_type_id
-├── description
-├── address
-├── latitude / longitude
-└── status
-
-request_assignments
-├── request_id
-├── professional_id
-├── assigned_at
-└── status
-
-request_events
-├── request_id
-├── event_type
-├── actor_id
-└── created_at
-
-reviews
-├── request_id
-├── customer_id
-├── professional_id
-├── rating
-└── comment
-```
-
-Bir profesyonel birden fazla hizmet sunabilir. Örneğin aynı kişi hem klima bakımı hem elektrik işleri sunabilir.
-
-## 7. Hedef uygulama mimarisi
-
-```text
-Expo Router UI
-│
-├── auth/
-│   └── giriş / kayıt / oturum
-│
-├── customer/
-│   ├── keşfet / kategoriler
-│   ├── talep oluştur
-│   ├── taleplerim
-│   └── talep takip
-│
-├── professional/
-│   ├── işler
-│   ├── iş detayı
-│   ├── müsaitlik
-│   └── profil
-│
-└── admin/
-    ├── talepler
-    ├── profesyoneller
-    ├── atamalar
-    └── kategoriler
-
-Application Layer
-├── types/
-├── services/
-├── hooks/
-├── validation/
-└── query/cache
-
-Supabase
-├── Auth
-├── Postgres
-├── Migrations
-├── RLS Policies
-├── Private Storage
-├── Realtime
-└── Edge Functions
-```
-
-Yetki gerektiren operasyonlar yalnızca UI gizleme ile korunmayacak; RLS ve gerektiğinde Edge Functions ile backend tarafında zorunlu kılınacaktır.
-
-## 8. Faz planı
-
-### Faz 0 — Mevcut prototipi koruma — DONE
-
-- [x] Yerel Git reposunu doğrula.
-- [x] Mevcut çalışma ağacını commit'e al.
-- [x] GitHub reposunu oluştur.
-- [x] `main` branch'ini GitHub'a push et.
-- [x] Supabase publishable config'i environment değişkenlerine taşı.
-- [x] `.env` dosyalarını Git dışında tut.
-
-### Faz 1 — Marketplace Foundation — NEXT
-
-Amaç: Klima-spesifik veri modelini çoklu hizmet modeline dönüştürmek.
-
-- [ ] Ürün genel isimlendirmesini belirle.
-- [ ] `service_categories` modelini oluştur.
-- [ ] `service_types` modelini oluştur.
-- [ ] İlk kategori seed verisini hazırla.
-- [ ] Klima-spesifik talep formunu generic request modeline dönüştür.
-- [ ] Ana sayfayı kategori keşif ekranına dönüştür.
-- [ ] Kategori → hizmet → talep akışını oluştur.
-- [ ] Mevcut klima akışını regression olarak koru.
-
-**Çıkış kriteri:** Yeni meslek/hizmet uygulama koduna yeni ekran eklemeden veri üzerinden sisteme eklenebilmeli.
-
-### Faz 2 — Authentication + RBAC + Veri Güvenliği
-
-- [ ] Supabase Auth.
-- [ ] `profiles` modeli.
-- [ ] CUSTOMER / PROFESSIONAL / ADMIN rolleri.
-- [ ] Talep sahipliği (`customer_id`).
-- [ ] RLS politikaları.
-- [ ] Admin ekranını rol bazlı koruma.
-- [ ] Private Storage + signed URL.
-- [ ] Migration dosyalarını repoya alma.
-
-**Çıkış kriteri:** Bir müşteri başka müşterinin talep veya fotoğraflarını görememeli; profesyonel yalnız yetkili olduğu işleri görmeli.
-
-### Faz 3 — Gerçek Talep Akışı
-
-- [ ] `/requests/[id]` detay rotası.
-- [ ] “Taleplerim” ekranı.
-- [ ] Talep durum geçmişi.
-- [ ] Form validation.
-- [ ] Loading / empty / error state standardı.
-- [ ] Güvenli talep numarası.
-- [ ] Idempotency / duplicate koruması.
-
-**Çıkış kriteri:** Bir müşteri baştan sona kendi talebini oluşturup benzersiz talep ekranından takip edebilmeli.
-
-### Faz 4 — Profesyonel / Usta Modülü
-
-- [ ] `professionals` modeli.
-- [ ] Birden fazla uzmanlık/hizmet desteği.
-- [ ] Profesyonel profil ekranı.
-- [ ] Hizmet bölgeleri.
-- [ ] Müsaitlik.
-- [ ] İş atama.
-- [ ] “İşlerim” ekranı.
-- [ ] İş kabul / reddetme akışı.
-- [ ] Durum güncelleme.
-
-**Çıkış kriteri:** Admin gerçek bir profesyoneli talebe atayabilmeli ve profesyonel yalnız kendi işlerini yönetebilmeli.
-
-### Faz 5 — Operasyon + Konum
-
-- [ ] Atama geçmişi.
-- [ ] `request_events`.
-- [ ] Harita entegrasyonunu ürünleştir.
-- [ ] Gerçek rota / ETA sağlayıcısını değerlendir.
-- [ ] Konum izinleri ve KVKK/açık rıza akışı.
-- [ ] Gerekliyse kontrollü arka plan konumu.
-- [ ] Admin operasyon görünümü.
-
-### Faz 6 — Değerlendirme + Güven
-
-- [ ] `reviews` modeli.
-- [ ] Profesyonel puanı.
-- [ ] İş sonrası değerlendirme.
-- [ ] Profesyonel doğrulama durumu.
-- [ ] Şikayet / destek akışı.
-- [ ] Kötüye kullanım kontrolleri.
-
-### Faz 7 — Bildirim + İletişim
-
-- [ ] Push notification.
-- [ ] Talep oluşturuldu bildirimi.
-- [ ] Usta atandı bildirimi.
-- [ ] Usta yolda bildirimi.
-- [ ] İş tamamlandı bildirimi.
-- [ ] SMS / WhatsApp seçeneklerini değerlendirme.
-- [ ] Uygulama içi mesajlaşmanın gerekliliğini değerlendirme.
-
-### Faz 8 — Randevu + Ticari Katman
-
-- [ ] Randevu tarih/saat slotları.
-- [ ] Fiyat teklifi.
-- [ ] Teklif kabul/red.
-- [ ] Ödeme altyapısı.
-- [ ] Fatura / makbuz gereksinimleri.
-- [ ] Platform komisyon modeli.
-- [ ] İptal/iade kuralları.
-
-### Faz 9 — Kalite + Release
-
-- [ ] Unit/integration test altyapısı.
-- [ ] Kritik RLS testleri.
-- [ ] Talep oluşturma E2E testi.
-- [ ] Usta atama E2E testi.
-- [ ] CI.
-- [ ] EAS Build.
-- [ ] Android gerçek cihaz testleri.
-- [ ] iOS testleri.
-- [ ] Crash reporting.
-- [ ] Analytics.
-- [ ] Production checklist.
-
-### Faz 10 — Akıllı Yönlendirme / AI
-
-MVP güvenli ve stabil olduktan sonra:
-
-- [ ] Serbest metinden kategori tahmini.
-- [ ] “Lavabonun altından su geliyor” → Tesisat / Su Kaçağı gibi sınıflandırma.
-- [ ] Fotoğraftan destekleyici arıza sınıflandırması.
-- [ ] Konum + uzmanlık + müsaitlik bazlı profesyonel önerisi.
-- [ ] Talep özetleme.
-- [ ] Admin operasyon yardımcısı.
-
-AI çıktıları kritik operasyonlarda tek başına karar verici olmayacaktır.
-
-## 9. MVP kapsamı
-
-İlk gerçek MVP'nin amacı bütün özellikleri yapmak değil, şu döngüyü güvenli biçimde tamamlamaktır:
-
-```text
-Müşteri kayıt/giriş
-→ kategori seçimi
-→ hizmet seçimi
-→ talep + fotoğraf + konum
-→ admin ataması
-→ profesyonelin işi görmesi
-→ durum güncellemesi
-→ müşterinin takibi
-→ tamamlanma
-→ puanlama
-```
-
-Ödeme, gelişmiş AI, otomatik eşleştirme ve kapsamlı mesajlaşma ilk güvenli MVP için zorunlu değildir.
-
-## 10. Güvenlik ilkeleri
-
-- Service-role veya diğer gizli anahtarlar mobil uygulamaya konulmaz.
-- Public/publishable istemci anahtarları environment config üzerinden yönetilir.
-- Yetkilendirme yalnızca UI seviyesinde yapılmaz.
-- Supabase RLS zorunlu güvenlik katmanıdır.
-- Müşteri yalnız kendi verisine erişir.
-- Profesyonel yalnız atanmış/yetkili işlere erişir.
-- Hassas fotoğraflar private bucket'ta tutulur.
-- Şema ve RLS değişiklikleri migration olarak versiyonlanır.
-- Hassas operasyonlar gerektiğinde Edge Function/backend üzerinden yürütülür.
-- Konum verisi minimum gerekli süre ve kapsamda işlenir.
-
-## 11. Geliştirme prensipleri
-
-- Fazlar sırayla ilerler; güvenlik borcu sonraya bırakılmaz.
-- Büyük değişiklikler ayrı branch üzerinde geliştirilir.
-- `main` çalışabilir durumda tutulur.
-- Migration'lar destructive olmamalı veya açık plan/backup gerektirmelidir.
-- Yeni özelliklerde loading, error ve empty state düşünülür.
-- Yeni hizmet kategorileri mümkün olduğunca data-driven tasarlanır.
-- Klima mevcut regression senaryosu olarak korunur.
-- Doğrulanmamış AI tahminleri operasyonel gerçek olarak kaydedilmez.
-
-## 12. Yerel geliştirme
-
-### Gereksinimler
-
-- Node.js
-- npm
-- Expo / Expo Go veya development build
-- Supabase projesi
-
-### Kurulum
-
-```bash
-npm install
-```
-
-`.env`:
-
-```env
-EXPO_PUBLIC_SUPABASE_URL=your_supabase_url
-EXPO_PUBLIC_SUPABASE_ANON_KEY=your_publishable_key
-```
-
-> Gerçek `.env` dosyası Git'e commit edilmemelidir.
-
-Uygulamayı başlat:
-
-```bash
+# UstaYanımda
+
+Klimacı Hakkı Usta prototipinden gelişen çok kategorili yerel hizmet marketplace temeli.
+Repository ve klasör adı değiştirilmedi. Hedef akış:
+**CUSTOMER → SERVICE REQUEST → PROFESSIONAL → OPERATION → COMPLETION → REVIEW**.
+
+## Mevcut kapsam
+
+Expo SDK 54, React Native 0.81, React 19, TypeScript, Expo Router 6 ve Supabase
+(Postgres, Storage, Realtime). Yeni state yönetimi veya animasyon bağımlılığı eklenmedi.
+Supabase istemcisi, Android Hermes derlemesindeki dinamik import hatası nedeniyle
+2.109.0 sürümüne sabitlendi ([upstream hata](https://github.com/supabase/supabase-js/issues/2380)).
+
+10 kategori ve 45 hizmet tipi: Klima, Elektrik, Su Tesisatı, Kombi / Doğalgaz,
+Çilingir, Beyaz Eşya, Boya / Tadilat, Mobilya / Montaj, Temizlik, Bahçe / Peyzaj.
+Klima Arızası, Klima Bakımı gibi gerçek hizmet adları korunur.
+
+## Mimari ve rotalar
+
+- `types/domain.ts`: ServiceCategory, ServiceType, ServiceRequest, RequestStatus.
+- `data/service-catalog.ts`: 10 kategori / 45 hizmetin başlangıç verisi.
+- `services/categories.ts`: tek katalog snapshot'ı; remote UUID'ler yerel ID'lerle karıştırılmaz.
+- `services/requests.ts`: kayıt, Storage, listeleme, numarayla takip, güncelleme ve Realtime.
+- `hooks/use-catalog.ts`: yüklenme/hata/tekrar deneme ve unmount koruması.
+- `theme/index.ts`: renk, spacing, radius, typography, shadow token'ları.
+- `components/ui/marketplace.tsx`: Screen, Brand, Button, State, StatusBadge, ServiceCard.
+- `components/service-request-form.tsx`: ortak form, GPS/fotoğraf, başarı ve takip CTA'sı.
+- `/`: Türkçe kategori/hizmet adı araması, kategori grid'i, aynı modelden hızlı hizmetler.
+- `/services/[categorySlug]`: tüm kategoriler için tek hizmet ekranı.
+- `/request/new?category=klima&type=klima-arizasi`: seçilen hizmet formu.
+- `/service`: Taleplerim; son 50 kayıt, **henüz kullanıcıya özel değil**.
+- `/tracking?requestNo=...`: yalnız seçilen/aranan talep; başka bir son kaydı otomatik seçmez.
+- `/profile`: gerçek durumu açıklayan misafir profili, geçmiş bağlantısı.
+- `/admin`: mevcut operasyon ekranı, müşteri tab menüsünden gizli; **RBAC değildir**.
+
+Kategori 1 → N hizmet; talep kategori + hizmet ID/slug bilgilerini taşır.
+Yeni kategori/hizmet için normalde yalnız DB verisi eklemek yeterlidir; yeni ekran gerekmez.
+Offline/ilk kurulum verisini güncel tutmak için yerel katalog ve seed de güncellenmelidir.
+Sunucu boş liste döndürürse boş kalır; yalnız eksik tablo hatasında başlangıç kataloğu
+kullanılır ve UI bunu belirtir. Ağ/yetki hataları tekrar deneme ile görünürdür.
+
+## Tasarım
+
+Nötr açık zemin, koyu lacivert, kontrollü yeşil/turkuaz; 4/8/12/16/24/32 spacing.
+Safe area, klavye kaçınması, geniş metin/small-screen grid uyarlaması, basılma geri
+bildirimi, 48–52 dp eylemler ve etiketli ikon kontrolleri. Uygulama bu fazda açık temadır.
+Wordmark UI primitive'leri ve Ionicons ile oluşturuldu. Launcher/splash raster
+asset'leri hâlâ Expo başlangıç görselleridir; nihai logo bu fazın kapsamı değildir.
+Expo `name=UstaYanımda`, `slug=ustayanimda`, `scheme=ustayanimda`; package/bundle ID eklenmedi.
+
+## Veritabanı: inceleme öncesi uygulanmaz
+
+- `supabase/migrations/20260919120000_marketplace_foundation.sql`: mevcut dalda bulunan
+  additive tablo/kolon ve idempotent seed migration'ı korundu.
+- `supabase/migrations/20260919160000_marketplace_indexes.sql`: kategori/hizmet sorguları
+  için additive, tekrar çalıştırılabilir indeksler.
+
+**Remote migration uygulanmadı. Gerçek remote şema/politikalar varsayılmadı.**
+Uygulamadan önce mevcut `service_requests` yapısını, constraint ve RLS'yi inceleyin;
+SQL dosyaları inceleme için hazırlanmıştır, uygulama otomatik migration çalıştırmaz.
+`category_id`, `service_type_id` ve slug kolonları nullable eklenir; eski kayıtlar silinmez.
+Migration yoksa yalnız marketplace kolonu eksik hatasında legacy insert denenir;
+kategori/hizmet bağlamı `note` içine eklenerek korunur. Diğer hatalarda tekrar insert yapılmaz.
+
+Legacy eşleme: description → `note`, photo → `photo_url`, hizmet adı → `problem_type`.
+`brand`, `ac_type` yalnız Klima için doldurulur. `technician_*` eski konum/iletişim
+alanları korunur; yeni profesyonel modeli değildir. Sabit Hakkı Usta/telefon ataması kaldırıldı.
+Mevcut backend durumları aynen gösterilir; DB'de olmayan “iş başladı” eklenmedi.
+Talep numarası UY öneki/zaman/rastgele bölüm kullanır; DB uniqueness/idempotency garantisi değildir.
+Storage upload `upsert: false` kullanır; seçilen dosyanın MIME türü korunur.
+
+## Yerel kurulum
+
+Node >=20.19, npm ve Expo Go SDK 54 veya uyumlu development build gerekir.
+
+```sh
+npm ci
+# Yerel .env oluşturun; commit etmeyin.
 npx expo start
-```
-
-Diğer komutlar:
-
-```bash
 npm run android
-npm run ios
-npm run web
 npm run lint
+npx tsc --noEmit
+node --test tests/marketplace.cjs
+npx expo export --platform android
 ```
 
-## 13. Repo
+`.env` değişkenleri: `EXPO_PUBLIC_SUPABASE_URL`, `EXPO_PUBLIC_SUPABASE_ANON_KEY`.
+Yalnız client anon/publishable anahtar kullanın; service-role/private anahtar eklemeyin.
+`service-photos` bucket ve mevcut servis talep tablosu önceden hazırlanmış olmalıdır.
+Bunlar kaynak koddan otomatik oluşturulmaz.
 
-GitHub: https://github.com/mehmetcamofficial/KlimaciHakkiUsta
+## Sınırlar ve güvenlik
 
-Mevcut prototip commit'i:
+- Auth, müşteri sahipliği, CUSTOMER/PROFESSIONAL/ADMIN yetkileri ve güvenli RLS henüz yok.
+- Taleplerim prototipte genel kayıt listesidir. Talep numarası bir yetki mekanizması değildir.
+- Admin yalnız navigasyonda gizli; `/admin` açık rota. Durum/konum yönetimi legacy prototiptir.
+- Storage public URL davranışı korunur; private bucket/signed URL Faz 2'dir.
+- Otomatik usta eşleştirme/atama yok. Geçmiş statik profesyonel kayıtları değiştirilmedi.
+- Ana sayfada sahipliği doğrulanamayan kayıt “sizin aktif talebiniz” diye gösterilmez.
+- Konum ve ETA yalnız mevcut koordinatlardan kuş uçuşu kaba tahmindir; trafik/rota servisi değildir.
+- Başarılı upload sonrası başarısız DB insert orphan dosya bırakabilir; transactional cleanup
+  ve sunucu idempotency sonraki fazda ele alınmalı.
+- Mevcut bağımlılık ağacında npm audit bulguları ve Expo patch sürüm uyarıları var;
+  zorlayıcı/geniş dependency upgrade bu fazda yapılmadı.
 
-```text
-0229777 feat: preserve Klimaci Hakki Usta mobile prototype
-```
+## Faz 1 kontrol listesi
 
----
+- [x] UstaYanımda uygulama kimliği ve UI wordmark.
+- [x] Tipli kategori → hizmet → talep modeli, 10 kategori / 45 hizmet.
+- [x] Ortak tasarım token/bileşenleri ve müşteri navigasyonu.
+- [x] Arama, hızlı hizmetler, dinamik kategori/hizmet/form rotaları.
+- [x] Fotoğraf/GPS/kayıt yolu, başarı → doğru talep takibi.
+- [x] Taleplerim, profil, durum takibi, değerlendirme ve admin işlevleri.
+- [x] Additive migration hazırlığı; remote DB değişikliği yapılmadı.
+- [x] Lint, TypeScript ve servis kontratı testleri.
+- [x] Android Hermes production bundle export.
+- [ ] Canlı DB üzerinde uçtan uca fotoğraf + GPS + kayıt + rating doğrulaması.
+- [ ] Tüm hedef Android boyutlarında tamamlanmış görsel regresyon.
 
-Bu README yaşayan bir ürün ve teknik plan dokümanıdır. Her faz tamamlandığında checklist ve mimari durumu güncellenmelidir.
+Ayrıntılı test sonuçları: [docs/validation/phase1.md](docs/validation/phase1.md).
+Başlangıç yol haritası tarihsel referans olarak [docs/roadmap.md](docs/roadmap.md)
+içinde korunur; güncel uygulama durumu bu README'dir.
+
+## Sonraki fazlar
+
+Faz 2: Auth, profiles, roller, RLS, talep sahipliği, private Storage/signed URL.
+Faz 3–4: gerçek talep yaşam döngüsü, idempotency, profesyonel onboarding/atama.
+Faz 5–6: operasyon/konum olayları ve güven/değerlendirme modeli.
+Faz 7–10: bildirim, randevu/ödeme, release kalite kapıları ve AI destekli sınıflandırma.
+Bu yetenekler mevcutmuş gibi sunulmaz.
