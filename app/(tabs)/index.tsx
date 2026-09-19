@@ -1,98 +1,132 @@
-import { Image } from 'expo-image';
-import { Platform, StyleSheet } from 'react-native';
-
-import { HelloWave } from '@/components/hello-wave';
-import ParallaxScrollView from '@/components/parallax-scroll-view';
-import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
-import { Link } from 'expo-router';
+import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 
 export default function HomeScreen() {
   return (
-    <ParallaxScrollView
-      headerBackgroundColor={{ light: '#A1CEDC', dark: '#1D3D47' }}
-      headerImage={
-        <Image
-          source={require('@/assets/images/partial-react-logo.png')}
-          style={styles.reactLogo}
-        />
-      }>
-      <ThemedView style={styles.titleContainer}>
-        <ThemedText type="title">Welcome!</ThemedText>
-        <HelloWave />
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <ThemedText type="subtitle">Step 1: Try it</ThemedText>
-        <ThemedText>
-          Edit <ThemedText type="defaultSemiBold">app/(tabs)/index.tsx</ThemedText> to see changes.
-          Press{' '}
-          <ThemedText type="defaultSemiBold">
-            {Platform.select({
-              ios: 'cmd + d',
-              android: 'cmd + m',
-              web: 'F12',
-            })}
-          </ThemedText>{' '}
-          to open developer tools.
-        </ThemedText>
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <Link href="/modal">
-          <Link.Trigger>
-            <ThemedText type="subtitle">Step 2: Explore</ThemedText>
-          </Link.Trigger>
-          <Link.Preview />
-          <Link.Menu>
-            <Link.MenuAction title="Action" icon="cube" onPress={() => alert('Action pressed')} />
-            <Link.MenuAction
-              title="Share"
-              icon="square.and.arrow.up"
-              onPress={() => alert('Share pressed')}
-            />
-            <Link.Menu title="More" icon="ellipsis">
-              <Link.MenuAction
-                title="Delete"
-                icon="trash"
-                destructive
-                onPress={() => alert('Delete pressed')}
-              />
-            </Link.Menu>
-          </Link.Menu>
-        </Link>
+    <ScrollView style={styles.container}>
+      <View style={styles.content}>
+        <Text style={styles.title}>Klimacı Hakkı Usta</Text>
 
-        <ThemedText>
-          {`Tap the Explore tab to learn more about what's included in this starter app.`}
-        </ThemedText>
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <ThemedText type="subtitle">Step 3: Get a fresh start</ThemedText>
-        <ThemedText>
-          {`When you're ready, run `}
-          <ThemedText type="defaultSemiBold">npm run reset-project</ThemedText> to get a fresh{' '}
-          <ThemedText type="defaultSemiBold">app</ThemedText> directory. This will move the current{' '}
-          <ThemedText type="defaultSemiBold">app</ThemedText> to{' '}
-          <ThemedText type="defaultSemiBold">app-example</ThemedText>.
-        </ThemedText>
-      </ThemedView>
-    </ParallaxScrollView>
+        <Text style={styles.subtitle}>
+          Klima arızası, bakım, montaj ve acil servis için hızlı çözüm.
+        </Text>
+
+        <TouchableOpacity style={styles.primaryButton}>
+          <Text style={styles.primaryButtonText}>Hızlı Servis Çağır</Text>
+        </TouchableOpacity>
+
+        <View style={styles.card}>
+          <Text style={styles.cardTitle}>Bugün ne yapmak istiyorsun?</Text>
+
+          <TouchableOpacity style={styles.option}>
+            <Text style={styles.optionTitle}>Klima Arızası Bildir</Text>
+            <Text style={styles.optionText}>
+              Soğutmuyor, su akıtıyor, ses yapıyor veya hata kodu veriyor.
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity style={styles.option}>
+            <Text style={styles.optionTitle}>Bakım Randevusu Al</Text>
+            <Text style={styles.optionText}>
+              Yaz/kış sezonu öncesi klima temizliği ve kontrolü.
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity style={styles.option}>
+            <Text style={styles.optionTitle}>Montaj Talebi Oluştur</Text>
+            <Text style={styles.optionText}>
+              Yeni klima kurulumu veya klima yer değişimi.
+            </Text>
+          </TouchableOpacity>
+        </View>
+
+        <View style={styles.darkCard}>
+          <Text style={styles.darkCardTitle}>Acil Servis</Text>
+          <Text style={styles.darkCardText}>
+            Yakındaki uygun ustaya talep gönderilir. Usta kabul edince takip ekranı açılır.
+          </Text>
+        </View>
+      </View>
+    </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
-  titleContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
+  container: {
+    flex: 1,
+    backgroundColor: '#F8FAFC',
   },
-  stepContainer: {
-    gap: 8,
-    marginBottom: 8,
+  content: {
+    paddingHorizontal: 20,
+    paddingTop: 64,
+    paddingBottom: 32,
   },
-  reactLogo: {
-    height: 178,
-    width: 290,
-    bottom: 0,
-    left: 0,
-    position: 'absolute',
+  title: {
+    fontSize: 34,
+    fontWeight: '800',
+    color: '#0F172A',
+  },
+  subtitle: {
+    marginTop: 12,
+    fontSize: 18,
+    lineHeight: 26,
+    color: '#64748B',
+  },
+  primaryButton: {
+    marginTop: 32,
+    backgroundColor: '#06B6D4',
+    padding: 24,
+    borderRadius: 24,
+  },
+  primaryButtonText: {
+    color: '#FFFFFF',
+    fontSize: 20,
+    fontWeight: '800',
+    textAlign: 'center',
+  },
+  card: {
+    marginTop: 32,
+    backgroundColor: '#FFFFFF',
+    padding: 20,
+    borderRadius: 24,
+  },
+  cardTitle: {
+    fontSize: 21,
+    fontWeight: '800',
+    color: '#0F172A',
+    marginBottom: 16,
+  },
+  option: {
+    backgroundColor: '#F1F5F9',
+    padding: 18,
+    borderRadius: 18,
+    marginTop: 12,
+  },
+  optionTitle: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: '#1E293B',
+  },
+  optionText: {
+    marginTop: 6,
+    fontSize: 15,
+    lineHeight: 22,
+    color: '#64748B',
+  },
+  darkCard: {
+    marginTop: 24,
+    backgroundColor: '#0F172A',
+    padding: 20,
+    borderRadius: 24,
+  },
+  darkCardTitle: {
+    color: '#FFFFFF',
+    fontSize: 21,
+    fontWeight: '800',
+  },
+  darkCardText: {
+    marginTop: 8,
+    color: '#CBD5E1',
+    fontSize: 15,
+    lineHeight: 22,
   },
 });
