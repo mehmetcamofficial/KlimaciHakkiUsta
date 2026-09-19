@@ -300,19 +300,36 @@ export async function updateRequest(
   if (error) throw error;
 }
 
+let channelSequence = 0;
+
 /**
  * Subscribes to service_requests changes and calls `onChange` (which is
  * expected to re-fetch through the RLS-scoped functions above — the
  * realtime payload itself is never read or trusted for authorization).
  * Pass `filterCustomerId` to also scope the subscription itself, as
  * defense-in-depth alongside RLS rather than instead of it.
+ *
+ * `name` is turned into a per-call-unique channel topic rather than used
+ * as-is. supabase-js's `channel(topic)` *reuses* an existing channel with
+ * the same topic instead of creating a new one — including one that is
+ * already subscribed — and calling `.on()` on an already-subscribed
+ * channel throws ("cannot add postgres_changes callbacks ... after
+ * subscribe()"). `removeChannel()` in this function's own cleanup is also
+ * async, so a fast unmount+remount with the same fixed name (Fast Refresh,
+ * or a brief unmount while an auth session is being refreshed) could race
+ * ahead of it and collide with a channel that hasn't finished being
+ * removed yet. A unique topic per call sidesteps that race entirely: it
+ * can never match a still-being-removed previous channel, so
+ * `supabase.channel()` always hands back a genuinely fresh one here.
  */
 export function subscribeRequests(
   name: string,
   onChange: () => void,
   filterCustomerId?: string,
 ) {
-  const channel = supabase.channel(name).on(
+  const uniqueName = `${name}-${++channelSequence}-${Date.now().toString(36)}`;
+  const channel = supabase.channel(uniqueName);
+  channel.on(
     "postgres_changes",
     {
       event: "*",

@@ -161,3 +161,66 @@ test("missing customer_id column fails closed instead of creating an unowned req
   // No retry was attempted with ownership stripped from the payload.
   assert.equal(service.inserts.length, 1);
 });
+
+/**
+ * Reproduces @supabase/realtime-js's actual, documented `channel(topic)`
+ * behavior: a channel with the same topic is *reused*, even once already
+ * subscribed, rather than a fresh one being created — which is exactly what
+ * made the real "cannot add postgres_changes callbacks ... after
+ * subscribe()" crash possible when a fixed, non-unique channel name was
+ * reused across subscribeRequests() calls (see services/requests.ts).
+ */
+function createChannelClientMock() {
+  const channels = new Map();
+  return {
+    channel(topic) {
+      const existing = channels.get(topic);
+      if (existing) return existing;
+      const state = { subscribed: false };
+      const chan = {
+        topic,
+        on() {
+          if (state.subscribed) {
+            throw new Error(
+              `tried to call .on() on realtime:${topic} after subscribe()`,
+            );
+          }
+          return chan;
+        },
+        subscribe() {
+          state.subscribed = true;
+          return chan;
+        },
+      };
+      channels.set(topic, chan);
+      return chan;
+    },
+    removeChannel(chan) {
+      channels.delete(chan.topic);
+    },
+    from: () => ({}),
+  };
+}
+
+test("mock sanity check: reusing a fixed, already-subscribed channel topic does throw", () => {
+  const client = createChannelClientMock();
+  const first = client.channel("request-history");
+  first.on();
+  first.subscribe();
+  const reused = client.channel("request-history");
+  assert.throws(() => reused.on());
+});
+
+test("subscribeRequests: back-to-back calls never collide, even with the same logical name", () => {
+  const client = createChannelClientMock();
+  const service = load("services/requests.ts", { "@/lib/supabase": { supabase: client } });
+  // Simulates a fast unmount+remount (Fast Refresh, or a brief auth-session
+  // blip) racing ahead of the previous call's (fire-and-forget)
+  // removeChannel cleanup — the exact precondition that used to crash.
+  assert.doesNotThrow(() => {
+    const unsubscribeFirst = service.subscribeRequests("request-history", () => {});
+    const unsubscribeSecond = service.subscribeRequests("request-history", () => {});
+    unsubscribeFirst();
+    unsubscribeSecond();
+  });
+});
