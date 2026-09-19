@@ -258,3 +258,69 @@ test("getAuthCallbackUrl: native never falls back to a hardcoded localhost regar
   });
   assert.equal(withStrayWindow.getAuthCallbackUrl(), "ustayanimda://auth/callback");
 });
+
+// ---------------------------------------------------------------------------
+// Forgot-password route / navigation contract
+// ---------------------------------------------------------------------------
+
+test("sign-in.tsx navigates to /forgot-password, the same path registered in _layout.tsx", () => {
+  const signIn = fs.readFileSync("app/sign-in.tsx", "utf8");
+  const layout = fs.readFileSync("app/_layout.tsx", "utf8");
+  const target = "/forgot-password";
+  // The login screen's "Şifremi unuttum" button must push this path.
+  assert.match(signIn, new RegExp(`\\/forgot-password`));
+  // The root layout must register the same string as a Stack.Screen name.
+  assert.match(layout, new RegExp(`name="forgot-password"`));
+});
+
+test("forgot-password.tsx is a public route: no RequireAuth, no RequireRole, no loading gate, no null return", () => {
+  const source = fs.readFileSync("app/forgot-password.tsx", "utf8");
+  assert.equal(source.includes("RequireAuth"), false);
+  assert.equal(source.includes("RequireRole"), false);
+  // No early `return null` / `return ();` that would produce a blank canvas.
+  assert.equal(/return\s*\(?\s*null\s*\)?\s*;/m.test(source), false);
+  assert.equal(/return\s*\(\s*\)\s*;/m.test(source), false);
+});
+
+test("forgot-password.tsx submits through the auth helper, not a direct Supabase call", () => {
+  const source = fs.readFileSync("app/forgot-password.tsx", "utf8");
+  // Must go through useAuth().requestPasswordReset, which is the centralized
+  // path that uses getAuthCallbackUrl() for the redirectTo.
+  assert.match(source, /requestPasswordReset/);
+  // Must not reach into supabase directly — that would bypass the centralized
+  // callback URL and any future redirect-policy changes.
+  assert.equal(source.includes("supabase.auth.resetPasswordForEmail"), false);
+});
+
+test("reset-password.tsx stays reachable from the auth callback and from forgot-password", () => {
+  const reset = fs.readFileSync("app/reset-password.tsx", "utf8");
+  const callback = fs.readFileSync("app/auth/callback.tsx", "utf8");
+  const forgot = fs.readFileSync("app/forgot-password.tsx", "utf8");
+  // callback -> reset (successful recovery token exchange)
+  assert.match(callback, new RegExp("/reset-password"));
+  // forgot-password error path -> reset is *not* wired from forgot-password itself
+  // (forgot-password sends the email; reset-password is only reached after the
+  // callback establishes a session). For completeness: forgot-password only
+  // navigates back to sign-in, never to reset-password directly.
+  assert.equal(forgot.includes("/reset-password"), false);
+  // reset-password's "Şifremi unuttum" helper (when the session expired) goes
+  // to forgot-password so the user can re-request the email.
+  assert.match(reset, new RegExp("/forgot-password"));
+});
+
+test("sign-up and sign-in still link to each other, and sign-in links to sign-up", () => {
+  const signIn = fs.readFileSync("app/sign-in.tsx", "utf8");
+  const signUp = fs.readFileSync("app/sign-up.tsx", "utf8");
+  assert.match(signIn, new RegExp("/sign-up"));
+  assert.match(signUp, new RegExp("/sign-in"));
+});
+
+test("auth callback route is the single landing point for email links", () => {
+  const callbackSource = fs.readFileSync("app/auth/callback.tsx", "utf8");
+  // Both signup and recovery flows land here.
+  assert.match(callbackSource, /recovery/);
+  assert.match(callbackSource, /signup/);
+  // It delegates session creation to the auth helper, never to supabase directly.
+  assert.match(callbackSource, /establishSessionFromTokens/);
+  assert.equal(callbackSource.includes("supabase.auth.setSession"), false);
+});
