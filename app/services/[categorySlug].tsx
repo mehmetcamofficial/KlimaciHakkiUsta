@@ -16,7 +16,7 @@ export default function CategoryScreen() {
   return (
     <>
       <Stack.Screen options={{ title: category?.name ?? "Hizmetler" }} />
-      <Screen insetTop={false}>
+      <Screen insetTop={false} width="medium">
         {loading ? (
           <State loading title="Hizmetler yükleniyor…" />
         ) : error ? (

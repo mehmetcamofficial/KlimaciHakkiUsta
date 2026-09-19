@@ -69,7 +69,7 @@ export default function AuthCallbackScreen() {
   }, [url, establishSessionFromTokens, router]);
 
   return (
-    <Screen>
+    <Screen width="narrow">
       <Stack.Screen options={{ headerShown: false }} />
       {status === "processing" ? (
         <State loading title="Doğrulanıyor…" />

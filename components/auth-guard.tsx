@@ -19,7 +19,7 @@ export function RequireAuth({ children }: PropsWithChildren) {
 
   if (decision === "loading") {
     return (
-      <Screen>
+      <Screen width="narrow">
         <State loading title="Yükleniyor…" />
       </Screen>
     );
@@ -27,7 +27,7 @@ export function RequireAuth({ children }: PropsWithChildren) {
 
   if (decision === "signed-out") {
     return (
-      <Screen>
+      <Screen width="narrow">
         <State title="Devam etmek için giriş yapmalısınız." />
         <Button title="Giriş yap" onPress={() => router.push("/sign-in")} />
       </Screen>
@@ -52,7 +52,7 @@ export function RequireRole({
 
   if (decision === "loading") {
     return (
-      <Screen>
+      <Screen width="narrow">
         <State loading title="Yükleniyor…" />
       </Screen>
     );
@@ -60,7 +60,7 @@ export function RequireRole({
 
   if (decision === "signed-out") {
     return (
-      <Screen>
+      <Screen width="narrow">
         <State title="Devam etmek için giriş yapmalısınız." />
         <Button title="Giriş yap" onPress={() => router.push("/sign-in")} />
       </Screen>
@@ -69,7 +69,7 @@ export function RequireRole({
 
   if (decision === "forbidden") {
     return (
-      <Screen>
+      <Screen width="narrow">
         <State title="Bu sayfaya erişim yetkiniz yok." />
         <Button title="Ana sayfaya dön" secondary onPress={() => router.push("/")} />
       </Screen>

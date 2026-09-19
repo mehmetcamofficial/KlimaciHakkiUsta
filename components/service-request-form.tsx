@@ -129,7 +129,7 @@ export function ServiceRequestForm({
   }
   if (requestNo)
     return (
-      <Screen insetTop={false}>
+      <Screen insetTop={false} width="medium">
         <Text style={ui.title}>Talebiniz oluşturuldu</Text>
         <Text selectable style={ui.body}>
           Talep no: {requestNo}
@@ -146,7 +146,7 @@ export function ServiceRequestForm({
       </Screen>
     );
   return (
-    <Screen insetTop={false}>
+    <Screen insetTop={false} width="medium">
       {catalogLoading ? (
         <State loading title="Hizmet bilgileri yükleniyor…" />
       ) : catalogError ? (

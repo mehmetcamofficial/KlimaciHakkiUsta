@@ -10,12 +10,27 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
+import { useScreenSize } from "@/hooks/use-screen-size";
+import { CONTENT_MAX_WIDTH } from "@/lib/responsive";
 import { colors, radius, spacing, ui } from "@/theme";
 
+/**
+ * The one place every screen gets its responsive content container from —
+ * see lib/responsive.ts's CONTENT_MAX_WIDTH for what each `width` variant
+ * ("narrow" | "medium" | "default") is for and why. All three stay 100%
+ * width on mobile with comfortable padding on tablet, and simply stop
+ * stretching edge-to-edge past their own desktop cap.
+ */
 export function Screen({
   children,
   insetTop = true,
-}: PropsWithChildren<{ insetTop?: boolean }>) {
+  width = "default",
+}: PropsWithChildren<{
+  insetTop?: boolean;
+  width?: keyof typeof CONTENT_MAX_WIDTH;
+}>) {
+  const screenSize = useScreenSize();
+  const horizontalPadding = screenSize === "mobile" ? spacing.xl : spacing.xxl;
   return (
     <SafeAreaView
       style={{ flex: 1, backgroundColor: colors.background }}
@@ -29,11 +44,12 @@ export function Screen({
         <ScrollView
           keyboardShouldPersistTaps="handled"
           contentContainerStyle={{
-            padding: spacing.xl,
-            gap: spacing.lg,
+            paddingHorizontal: horizontalPadding,
+            paddingTop: spacing.xl,
             paddingBottom: spacing.xxl,
+            gap: spacing.lg,
             width: "100%",
-            maxWidth: 760,
+            maxWidth: CONTENT_MAX_WIDTH[width],
             alignSelf: "center",
           }}
         >

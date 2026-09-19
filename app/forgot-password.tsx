@@ -35,7 +35,7 @@ export default function ForgotPasswordScreen() {
   }
 
   return (
-    <Screen>
+    <Screen width="narrow">
       <Stack.Screen options={{ title: "Şifremi Unuttum" }} />
       <Brand />
       <Text style={ui.title}>Şifrenizi mi unuttunuz?</Text>

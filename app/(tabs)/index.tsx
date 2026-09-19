@@ -10,6 +10,8 @@ import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { Brand, Screen, ServiceCard, State } from "@/components/ui/marketplace";
 import { useCatalog } from "@/hooks/use-catalog";
+import { useScreenSize } from "@/hooks/use-screen-size";
+import { GRID_ITEM_WIDTH_PERCENT, getGridColumns } from "@/lib/responsive";
 import { colors, radius, spacing, ui } from "@/theme";
 
 const quickSlugs = [
@@ -23,6 +25,12 @@ export default function HomeScreen() {
   const { catalog, loading, error, retry } = useCatalog();
   const [search, setSearch] = useState("");
   const { width, fontScale } = useWindowDimensions();
+  const screenSize = useScreenSize();
+  // The very-narrow-phone / large-accessibility-font single-column
+  // fallback stays a special case underneath the normal breakpoint-based
+  // column count (2 mobile / 3 tablet / 4 desktop).
+  const columns = width < 350 || fontScale > 1.3 ? 1 : getGridColumns(screenSize);
+  const cardWidthPercent = GRID_ITEM_WIDTH_PERCENT[columns];
   const query = search.trim().toLocaleLowerCase("tr");
   const types = catalog?.serviceTypes ?? [];
   const categories = (catalog?.categories ?? []).filter(
@@ -97,7 +105,7 @@ export default function HomeScreen() {
                 style={({ pressed }) => [
                   ui.card,
                   {
-                    width: width < 350 || fontScale > 1.3 ? "100%" : "47.5%",
+                    width: cardWidthPercent,
                     minHeight: 132,
                     opacity: pressed ? 0.6 : 1,
                     justifyContent: "space-between",
