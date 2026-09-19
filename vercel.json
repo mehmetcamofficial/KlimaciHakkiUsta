@@ -1,0 +1,10 @@
+{
+  "buildCommand": "npx expo export --platform web",
+  "outputDirectory": "dist",
+  "cleanUrls": true,
+  "rewrites": [
+    { "source": "/admin/requests/:id", "destination": "/admin/requests/[id].html" },
+    { "source": "/admin/:module", "destination": "/admin/[module].html" },
+    { "source": "/services/:categorySlug", "destination": "/services/[categorySlug].html" }
+  ]
+}
