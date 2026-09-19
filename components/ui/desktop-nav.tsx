@@ -3,15 +3,17 @@ import { Pressable, Text, View } from "react-native";
 import { usePathname, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 
+import { useAuth } from "@/lib/auth";
 import { colors, radius, spacing, ui } from "@/theme";
 
 /**
  * Desktop-web-only header nav, shown in place of the native bottom tab bar
  * once the window is wide enough (see app/(tabs)/_layout.tsx — gated on
  * `Platform.OS === "web"` there, so this never affects Android/iOS).
- * Intentionally exposes only the same customer areas the bottom tab bar
- * does — no admin link here, matching the tab bar's own `href: null` on
- * the admin tab (see requirement: don't expose admin nav to customers).
+ * Exposes only the same customer areas the bottom tab bar does; the Admin
+ * entry point below is appended separately and only when the signed-in
+ * user's role is actually "admin" — never based on hiding/showing a link
+ * alone, since /admin's real gate is RequireRole + RLS, not this nav.
  */
 const LINKS = [
   { key: "index", label: "Ana Sayfa", icon: "home-outline" as const, href: "/" as const },
@@ -38,9 +40,19 @@ const LINKS = [
   },
 ];
 
+const ADMIN_LINK = {
+  key: "admin",
+  label: "Admin",
+  icon: "shield-checkmark-outline" as const,
+  href: "/admin" as const,
+  matchPath: "/admin",
+};
+
 export function DesktopNav() {
   const router = useRouter();
   const pathname = usePathname();
+  const { role } = useAuth();
+  const links = role === "admin" ? [...LINKS, ADMIN_LINK] : LINKS;
 
   return (
     <View
@@ -69,7 +81,7 @@ export function DesktopNav() {
       </View>
 
       <View style={{ flexDirection: "row", gap: spacing.sm }}>
-        {LINKS.map((link) => {
+        {links.map((link) => {
           const active =
             link.key === "index"
               ? pathname === "/"

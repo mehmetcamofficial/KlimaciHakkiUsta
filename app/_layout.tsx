@@ -17,6 +17,7 @@ export default function RootLayout() {
         <ThemeProvider value={DefaultTheme}>
           <Stack>
             <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+            <Stack.Screen name="admin" options={{ headerShown: false }} />
             <Stack.Screen name="sign-in" options={{ title: "Giriş Yap" }} />
             <Stack.Screen name="sign-up" options={{ title: "Kayıt Ol" }} />
             <Stack.Screen name="forgot-password" options={{ title: "Şifremi Unuttum" }} />

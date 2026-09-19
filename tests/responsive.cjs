@@ -124,9 +124,11 @@ test("every auth screen requests the narrow content width", () => {
   }
 });
 
-test("desktop nav never links to /admin — admin stays hidden from customer navigation", () => {
+test("desktop nav's base customer link set never includes /admin — only an explicit role check can add it (see tests/admin.cjs)", () => {
   const source = fs.readFileSync("components/ui/desktop-nav.tsx", "utf8");
-  assert.equal(/["'`]\/admin/.test(source), false);
+  const linksArrayMatch = source.match(/const LINKS = \[[\s\S]*?\n\];/);
+  assert.ok(linksArrayMatch, "could not locate the LINKS array");
+  assert.equal(/\/admin/.test(linksArrayMatch[0]), false);
 });
 
 test("desktop-only chrome in the tabs layout is gated behind Platform.OS === \"web\" so native never hides its tab bar", () => {
@@ -150,11 +152,7 @@ test("getAuthCallbackUrl still never hardcodes localhost or the future productio
   assert.equal(/ustayanimda\.net\.tr/i.test(codeOnly), false);
 });
 
-test("admin route is untouched by this phase: still gated by RequireRole, no new customer-facing admin link introduced", () => {
-  const adminSource = fs.readFileSync("app/(tabs)/admin.tsx", "utf8");
-  assert.match(adminSource, /RequireRole/);
-  assert.match(adminSource, /role="admin"/);
+test("the (tabs) group no longer registers its own admin tab — admin moved to app/admin/* in Phase 2.5C (see tests/admin.cjs)", () => {
   const tabsLayout = fs.readFileSync("app/(tabs)/_layout.tsx", "utf8");
-  // The admin tab must still be hidden from the (mobile) tab bar itself.
-  assert.match(tabsLayout, /name="admin"[\s\S]*?href:\s*null/);
+  assert.equal(/name="admin"/.test(tabsLayout), false);
 });
