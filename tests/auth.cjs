@@ -6,7 +6,7 @@ const ts = require("typescript");
 const fs = require("node:fs");
 const vm = require("node:vm");
 
-function load(path, dependencies = {}) {
+function load(path, dependencies = {}, extraGlobals = {}) {
   const exports = {};
   const code = ts.transpileModule(fs.readFileSync(path, "utf8"), {
     compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2019 },
@@ -18,6 +18,7 @@ function load(path, dependencies = {}) {
       throw Error(name);
     },
     Error,
+    ...extraGlobals,
   });
   return exports;
 }
@@ -27,6 +28,21 @@ const rbac = load("lib/rbac.ts", { "@/types/auth": authTypes });
 const authErrors = load("lib/auth-errors.ts");
 const validation = load("lib/validation.ts");
 const deepLink = load("lib/auth-deep-link.ts");
+
+function loadCallbackUrl({ platformOS, windowOrigin, createURLResult }) {
+  const extraGlobals = {};
+  if (windowOrigin !== undefined) {
+    extraGlobals.window = { location: { origin: windowOrigin } };
+  }
+  return load(
+    "lib/auth-callback-url.ts",
+    {
+      "react-native": { Platform: { OS: platformOS } },
+      "expo-linking": { createURL: () => createURLResult },
+    },
+    extraGlobals,
+  );
+}
 
 test("isUserRole accepts only the three known roles", () => {
   assert.equal(rbac.isUserRole("customer"), true);
@@ -177,4 +193,68 @@ test("passwordsMatch catches mismatches and rejects a blank password", () => {
   assert.equal(validation.passwordsMatch("secret1", "secret1"), true);
   assert.equal(validation.passwordsMatch("secret1", "secret2"), false);
   assert.equal(validation.passwordsMatch("", ""), false);
+});
+
+test("getAuthCallbackUrl: native (dev build/standalone) uses the app's own scheme via Linking.createURL", () => {
+  const mod = loadCallbackUrl({
+    platformOS: "android",
+    createURLResult: "ustayanimda://auth/callback",
+  });
+  assert.equal(mod.getAuthCallbackUrl(), "ustayanimda://auth/callback");
+});
+
+test("getAuthCallbackUrl: production web uses the page's own current origin, not a hardcoded host", () => {
+  const mod = loadCallbackUrl({
+    platformOS: "web",
+    windowOrigin: "https://ustayanimda.net.tr",
+    createURLResult: "should-not-be-used",
+  });
+  assert.equal(mod.getAuthCallbackUrl(), "https://ustayanimda.net.tr/auth/callback");
+});
+
+test("getAuthCallbackUrl: local web dev uses whatever the dev server's actual origin is", () => {
+  const mod = loadCallbackUrl({
+    platformOS: "web",
+    windowOrigin: "http://localhost:8099",
+    createURLResult: "should-not-be-used",
+  });
+  // This is the dev server's real, runtime-dependent origin — read live from
+  // window.location, not a value this code guessed or hardcoded.
+  assert.equal(mod.getAuthCallbackUrl(), "http://localhost:8099/auth/callback");
+});
+
+test("getAuthCallbackUrl: web with no window (static export prerender) falls back to Linking, never a bare guess", () => {
+  const mod = loadCallbackUrl({
+    platformOS: "web",
+    createURLResult: "/auth/callback",
+  });
+  assert.equal(mod.getAuthCallbackUrl(), "/auth/callback");
+});
+
+test("signUp and requestPasswordReset both redirect through the single centralized helper", () => {
+  // lib/auth.tsx is a React component and isn't renderable in this
+  // harness, so this checks the source directly: there must be exactly one
+  // redirect implementation, and both auth calls that need a redirect must
+  // use it — not a second, possibly-drifted Linking.createURL() call.
+  const source = fs.readFileSync("lib/auth.tsx", "utf8");
+  assert.equal((source.match(/getAuthCallbackUrl\(\)/g) || []).length, 2);
+  assert.equal(/Linking\.createURL/.test(source), false);
+  assert.match(source, /emailRedirectTo:\s*getAuthCallbackUrl\(\)/);
+  assert.match(source, /redirectTo:\s*getAuthCallbackUrl\(\)/);
+});
+
+test("getAuthCallbackUrl: native never falls back to a hardcoded localhost regardless of window state", () => {
+  const withoutWindow = loadCallbackUrl({
+    platformOS: "ios",
+    createURLResult: "ustayanimda://auth/callback",
+  });
+  assert.ok(!withoutWindow.getAuthCallbackUrl().includes("localhost"));
+  // Even if something upstream leaked a browser-shaped global into a native
+  // bundle, Platform.OS !== "web" must keep this on the Linking.createURL path.
+  const withStrayWindow = loadCallbackUrl({
+    platformOS: "ios",
+    windowOrigin: "http://localhost:19006",
+    createURLResult: "ustayanimda://auth/callback",
+  });
+  assert.equal(withStrayWindow.getAuthCallbackUrl(), "ustayanimda://auth/callback");
 });

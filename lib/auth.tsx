@@ -7,9 +7,9 @@ import React, {
   useState,
   type PropsWithChildren,
 } from "react";
-import * as Linking from "expo-linking";
 import type { Session, User } from "@supabase/supabase-js";
 
+import { getAuthCallbackUrl } from "@/lib/auth-callback-url";
 import { mapAuthError } from "@/lib/auth-errors";
 import { supabase } from "@/lib/supabase";
 import { fetchProfile } from "@/services/profiles";
@@ -19,16 +19,6 @@ interface SignUpResult {
   error: string | null;
   needsEmailConfirmation: boolean;
 }
-
-/**
- * Both signup confirmation and password recovery emails redirect here.
- * expo-linking builds the right URL for the current environment (the
- * `ustayanimda://` custom scheme in a dev client/standalone build, an
- * `exp://` proxy URL in Expo Go) instead of falling back to Supabase's
- * default Site URL (which is a web-oriented localhost address and is
- * exactly what produced the ERR_CONNECTION_REFUSED bug this fixes).
- */
-const AUTH_CALLBACK_URL = Linking.createURL("/auth/callback");
 
 interface AuthContextValue {
   session: Session | null;
@@ -130,7 +120,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
           email: email.trim(),
           password,
           options: {
-            emailRedirectTo: AUTH_CALLBACK_URL,
+            emailRedirectTo: getAuthCallbackUrl(),
             // full_name is not privileged — the server-side trigger that
             // creates the profile always hardcodes role="customer" and
             // never reads a role from this metadata (see
@@ -148,7 +138,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
       },
       async requestPasswordReset(email) {
         const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), {
-          redirectTo: AUTH_CALLBACK_URL,
+          redirectTo: getAuthCallbackUrl(),
         });
         return { error: error ? mapAuthError(error) : null };
       },

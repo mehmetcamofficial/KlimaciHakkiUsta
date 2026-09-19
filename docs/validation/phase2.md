@@ -27,6 +27,11 @@ ağ kısıtı, §3/§5'te açıklanmıştır) — bu yüzden §1–§7 aşağıd
 değişmeden korunmuştur (o an doğru olan durumu yansıtır) ve yeni §8/§9 bu turun
 kendi doğrulama sınırlarını ayrıca belgeler.
 
+**Güncelleme:** §8'deki düzeltmeye rağmen gerçek Android QA'da sorun devam
+etti. Gerçek kök neden (Expo Go'nun `ustayanimda://` şemasını hiçbir zaman
+gerçekten üretmemesi) ve merkezi `getAuthCallbackUrl()` çözümü için **§10'a**
+bakın — bu, önceki turun eksik bıraktığı asıl teşhistir.
+
 ## 1. Mimari
 
 - **Auth:** Supabase Auth, e-posta + şifre. `lib/auth.tsx` (`AuthProvider`/`useAuth`)
@@ -254,3 +259,56 @@ dokunmadı, ama bunu bağımsız olarak doğrulamak hâlâ sizin sorumluluğunuz
 Supabase Dashboard → Authentication → URL Configuration → Redirect URLs
 listesinde `ustayanimda://**` bulunmalıdır (bu turun başında zaten
 yapılandırıldığı belirtildi; QA sırasında hâlâ orada olduğunu doğrulayın).
+
+## 10. Auth QA Fix — round 2: gerçek kök neden (Expo Go) ve merkezi redirect helper'ı
+
+§8/§9'daki düzeltmeye rağmen gerçek Android QA'da şifre sıfırlama hâlâ
+localhost'a düşüyordu. Kök neden `getAuthCallbackUrl()`'ün kendisi değildi —
+**hangi ortamda çalıştığıydı.**
+
+**Kök neden.** Bu projede `expo-dev-client` kurulu değil, `eas.json` yok,
+native `android/`/`ios/` klasörleri hiç üretilmemiş, `app.json`'da
+`android.package`/`ios.bundleIdentifier` tanımlı değil ve `npm run android`
+yalnızca `expo start --android` çalıştırıyor. Bunların hepsi, uygulamanın QA
+sırasında **Expo Go** içinde çalıştığını gösteriyor. Expo Go, `exp://` (ve
+SDK'ya göre `exp+<slug>://`) şemasının sahibidir; `app.json`'daki
+`scheme: "ustayanimda"` ne olursa olsun, Expo Go içinde
+`Linking.createURL(...)` **her zaman** kendi `exp://<ip>:<port>/--/...`
+proxy URL'ini üretir — bu, Expo'nun belgelenmiş, kod ile aşılamayan bir
+davranışıdır. Bu `exp://...` URL'i Supabase'in izinli Redirect URL listesindeki
+`ustayanimda://**` deseniyle eşleşmez, Supabase da eşleşmeyen bir
+`redirectTo` aldığında projenin varsayılan Site URL'ine (localhost) düşer.
+Yani: `ustayanimda://**` doğru yapılandırılmıştı, ama Expo Go'nun ürettiği
+gerçek değer hiçbir zaman o değildi.
+
+**Bu turda değişen.** `lib/auth-callback-url.ts` → `getAuthCallbackUrl()`
+eklendi: native'de yine `Linking.createURL("/auth/callback")` kullanır
+(dev-client/standalone'da doğru sonucu üretir — sorun bu satırda değildi),
+web'de ise `window.location.origin + "/auth/callback"` kullanır (üretimde
+`https://ustayanimda.net.tr`, yerelde o anki dev sunucu origin'i — hiçbir
+yerde hardcoded `localhost` yok). `lib/auth.tsx`'teki tek bir modül-seviyesi
+`AUTH_CALLBACK_URL` sabiti kaldırıldı; `signUp` ve `requestPasswordReset`
+artık her çağrıda aynı `getAuthCallbackUrl()`'ü çağırıyor (tek uygulama,
+iki farklı yol yok — `tests/auth.cjs`'te kaynak metni doğrudan kontrol eden
+bir regresyon testiyle güvence altına alındı).
+
+**Değişmeyen/dokunulmayan.** `app/auth/callback.tsx` ve
+`lib/auth-deep-link.ts`'teki implicit-flow (fragment tabanlı) token ayrıştırma
+mantığı incelendi ve doğru bulundu — `lib/supabase.ts`'te `flowType`
+belirtilmediği için supabase-js v2 varsayılanı `implicit`'tir, bu yüzden
+buraya dokunulmadı. `lib/rbac.ts`, RLS/RBAC, migration dosyaları
+değiştirilmedi.
+
+**Asıl sonuç — kod bunu tek başına çözemez.** `ustayanimda://` şemasıyla
+gerçek bir deep link'in Android'de çalıştığını görmek için **Expo Go
+kullanılamaz.** Bir development build gerekir:
+
+```sh
+npx expo run:android
+```
+
+(Bu komut yerel bir development client oluşturup kurar ve başlatır; ilk
+çalıştırmada `android.package` app.json'da yoksa Expo CLI slug'a dayalı bir
+varsayılan üretip sorabilir — bunu kabul etmek native klasörleri
+oluşturmaktan başka bir şey yapmaz, mevcut kodu değiştirmez.) Alternatif:
+EAS kullanılıyorsa `eas build --profile development --platform android`.
