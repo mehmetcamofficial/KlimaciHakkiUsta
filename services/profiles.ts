@@ -35,7 +35,30 @@ export async function fetchProfile(userId: string): Promise<Profile | null> {
     .select("id, role, full_name, phone, avatar_path")
     .eq("id", userId)
     .maybeSingle();
-  if (error) throw error;
+  if (error) {
+    // Dev-only: never shown to the user (callers keep their generic
+    // message), never includes tokens/keys — just the PostgREST error
+    // shape, which is what's needed to tell an RLS rejection apart from a
+    // missing column from a missing row apart from a network failure.
+    if (__DEV__) {
+      console.error("[profiles] load failed", {
+        code: error.code,
+        message: error.message,
+        details: error.details,
+        hint: error.hint,
+      });
+    }
+    throw error;
+  }
+  // maybeSingle() returns null (not an error) when no row matches — this
+  // is a distinct, non-error condition from the block above, and worth
+  // telling apart at the console: it means either the new-user trigger
+  // never ran for this account (e.g. they signed up before
+  // 20260919170000_profiles_and_roles.sql existed) or RLS is silently
+  // filtering the row out.
+  if (__DEV__ && !data) {
+    console.warn("[profiles] no profile row found for user", { userId });
+  }
   return data ? mapProfileRow(data) : null;
 }
 

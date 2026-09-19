@@ -244,7 +244,24 @@ export async function listOwnRequests(customerId: string): Promise<RequestRow[]>
     .eq("customer_id", customerId)
     .order("id", { ascending: false })
     .limit(50);
-  if (error) throw error;
+  if (error) {
+    // Dev-only: never shown to the user (the screen keeps its generic
+    // "Talepler yüklenemedi." message), never includes tokens/keys — just
+    // the PostgREST error shape, which is what's needed to tell a missing
+    // customer_id column apart from an RLS rejection apart from a network
+    // failure. An empty result (data === []) is NOT an error and is not
+    // logged here — the screen already renders a distinct "no requests
+    // yet" state for that.
+    if (__DEV__) {
+      console.error("[requests] listOwnRequests failed", {
+        code: error.code,
+        message: error.message,
+        details: error.details,
+        hint: error.hint,
+      });
+    }
+    throw error;
+  }
   return data ?? [];
 }
 
