@@ -10,12 +10,23 @@ import {
   View,
 } from "react-native";
 
+import { RequireRole } from "@/components/auth-guard";
 import {
-  listRequests,
+  getRequestPhotoUrl,
+  listRequestsForAdmin,
   subscribeRequests,
   updateRequest,
   type RequestRow,
 } from "@/services/requests";
+
+async function openPhoto(request: RequestRow) {
+  const url = await getRequestPhotoUrl(request);
+  if (!url) {
+    Alert.alert("Fotoğraf Hatası", "Fotoğraf açılamadı.");
+    return;
+  }
+  await Linking.openURL(url);
+}
 
 const statuses = [
   "Talep alındı",
@@ -25,7 +36,7 @@ const statuses = [
   "Servis tamamlandı",
 ];
 
-export default function AdminScreen() {
+function AdminPanel() {
   const [requests, setRequests] = useState<RequestRow[]>([]);
   const [watchingId, setWatchingId] = useState<number | null>(null);
   const [subscription, setSubscription] =
@@ -47,7 +58,7 @@ export default function AdminScreen() {
 
   async function loadRequests() {
     try {
-      setRequests(await listRequests());
+      setRequests(await listRequestsForAdmin());
     } catch {
       Alert.alert("Veri Hatası", "Talepler yüklenemedi.");
     }
@@ -164,7 +175,7 @@ export default function AdminScreen() {
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
       <Text style={styles.title}>Usta Paneli</Text>
       <Text style={styles.subtitle}>
-        Geçici operasyon paneli · Yetkilendirme henüz uygulanmadı.
+        Geçici operasyon paneli · Yalnızca admin rolüne erişim izni verilir.
       </Text>
 
       {requests.map((item) => {
@@ -184,10 +195,10 @@ export default function AdminScreen() {
             <Text style={styles.text}>Arıza: {item.problem_type || "-"}</Text>
             <Text style={styles.status}>Durum: {item.status}</Text>
 
-            {item.photo_url ? (
+            {item.photo_url || item.photo_path ? (
               <TouchableOpacity
                 style={styles.actionButton}
-                onPress={() => Linking.openURL(item.photo_url!)}
+                onPress={() => void openPhoto(item)}
               >
                 <Text style={styles.actionButtonText}>📷 Fotoğrafı Aç</Text>
               </TouchableOpacity>
@@ -326,6 +337,14 @@ export default function AdminScreen() {
         </View>
       )}
     </ScrollView>
+  );
+}
+
+export default function AdminScreen() {
+  return (
+    <RequireRole role="admin">
+      <AdminPanel />
+    </RequireRole>
   );
 }
 

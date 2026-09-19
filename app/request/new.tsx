@@ -1,6 +1,7 @@
 import React from "react";
 import { Stack, useLocalSearchParams } from "expo-router";
 
+import { RequireAuth } from "@/components/auth-guard";
 import { ServiceRequestForm } from "@/components/service-request-form";
 
 export default function NewRequestScreen() {
@@ -9,10 +10,12 @@ export default function NewRequestScreen() {
   return (
     <>
       <Stack.Screen options={{ title: "Talep Oluştur" }} />
-      <ServiceRequestForm
-        categorySlug={params.category}
-        serviceTypeSlug={params.type}
-      />
+      <RequireAuth>
+        <ServiceRequestForm
+          categorySlug={params.category}
+          serviceTypeSlug={params.type}
+        />
+      </RequireAuth>
     </>
   );
 }

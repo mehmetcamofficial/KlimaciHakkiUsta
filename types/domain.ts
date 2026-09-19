@@ -29,6 +29,7 @@ export interface ServiceType {
 export interface ServiceRequest {
   id: number;
   requestNo: string;
+  customerId: string | null;
   categoryId: string | null;
   categorySlug: string | null;
   serviceTypeId: string | null;
@@ -53,6 +54,7 @@ export interface ServiceRequest {
 }
 
 export interface CreateServiceRequestInput {
+  customerId: string;
   categorySlug: string;
   categoryId?: string | null;
   serviceTypeSlug: string;

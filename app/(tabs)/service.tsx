@@ -1,19 +1,22 @@
 import { useEffect, useState } from "react";
 import { Text, View } from "react-native";
 import { useRouter } from "expo-router";
+import { RequireAuth } from "@/components/auth-guard";
 import {
   Button,
   Screen,
   State,
   StatusBadge,
 } from "@/components/ui/marketplace";
+import { useAuth } from "@/lib/auth";
 import {
-  listRequests,
+  listOwnRequests,
   subscribeRequests,
   type RequestRow,
 } from "@/services/requests";
 import { ui } from "@/theme";
-export default function RequestsScreen() {
+
+function OwnRequestsList({ customerId }: { customerId: string }) {
   const router = useRouter();
   const [requests, setRequests] = useState<RequestRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -23,7 +26,7 @@ export default function RequestsScreen() {
     let active = true;
     async function load() {
       try {
-        const data = await listRequests();
+        const data = await listOwnRequests(customerId);
         if (active) {
           setRequests(data);
           setError(false);
@@ -36,19 +39,16 @@ export default function RequestsScreen() {
     }
     setLoading(true);
     void load();
-    const unsubscribe = subscribeRequests("request-history", load);
+    const unsubscribe = subscribeRequests("request-history", load, customerId);
     return () => {
       active = false;
       unsubscribe();
     };
-  }, [attempt]);
+  }, [attempt, customerId]);
   return (
     <Screen>
       <Text style={ui.title}>Taleplerim</Text>
-      <Text style={ui.caption}>
-        Prototip görünümü: Bu liste hesabınıza özel değildir. Son 50 kayıt
-        gösterilir.
-      </Text>
+      <Text style={ui.caption}>Yalnızca sizin oluşturduğunuz talepler listelenir.</Text>
       {loading ? (
         <State loading title="Talepler yükleniyor…" />
       ) : error ? (
@@ -93,5 +93,14 @@ export default function RequestsScreen() {
         ))
       )}
     </Screen>
+  );
+}
+
+export default function RequestsScreen() {
+  const { user } = useAuth();
+  return (
+    <RequireAuth>
+      {user && <OwnRequestsList customerId={user.id} />}
+    </RequireAuth>
   );
 }

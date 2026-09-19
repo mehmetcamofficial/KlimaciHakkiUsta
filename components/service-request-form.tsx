@@ -4,8 +4,9 @@ import * as Location from "expo-location";
 import * as ImagePicker from "expo-image-picker";
 import { useRouter } from "expo-router";
 import { Button, Screen, State } from "@/components/ui/marketplace";
+import { useAuth } from "@/lib/auth";
 import { useCatalog } from "@/hooks/use-catalog";
-import { createServiceRequest } from "@/services/requests";
+import { ConfigurationError, createServiceRequest } from "@/services/requests";
 import { ui } from "@/theme";
 
 export function ServiceRequestForm({
@@ -16,6 +17,7 @@ export function ServiceRequestForm({
   serviceTypeSlug?: string;
 }) {
   const router = useRouter();
+  const { user } = useAuth();
   const {
     catalog,
     loading: catalogLoading,
@@ -85,6 +87,10 @@ export function ServiceRequestForm({
   }
   async function submit() {
     if (submitting.current || !category || !serviceType) return;
+    if (!user) {
+      setMessage("Talep oluşturmak için giriş yapmalısınız.");
+      return;
+    }
     if (phone.replace(/\D/g, "").length < 10 || !address.trim()) {
       setMessage("Geçerli bir telefon numarası ve adres girin.");
       return;
@@ -94,6 +100,7 @@ export function ServiceRequestForm({
     setMessage("");
     try {
       const result = await createServiceRequest({
+        customerId: user.id,
         categorySlug: category.slug,
         categoryId: catalog?.source === "remote" ? category.id : null,
         serviceTypeSlug: serviceType.slug,
@@ -109,9 +116,11 @@ export function ServiceRequestForm({
         acType: category.slug === "klima" ? acType : null,
       });
       setRequestNo(result.requestNo);
-    } catch {
+    } catch (error) {
       setMessage(
-        "Talep kaydedilemedi. Bilgileriniz korunuyor; bağlantınızı kontrol edip tekrar deneyin.",
+        error instanceof ConfigurationError
+          ? error.message
+          : "Talep kaydedilemedi. Bilgileriniz korunuyor; bağlantınızı kontrol edip tekrar deneyin.",
       );
     } finally {
       submitting.current = false;

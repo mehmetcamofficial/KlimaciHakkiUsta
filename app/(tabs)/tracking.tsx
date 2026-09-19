@@ -2,14 +2,17 @@ import { useEffect, useState } from "react";
 import { Linking, Pressable, Text, TextInput, View } from "react-native";
 import { useLocalSearchParams } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
+import { RequireAuth } from "@/components/auth-guard";
 import {
   Button,
   Screen,
   State,
   StatusBadge,
 } from "@/components/ui/marketplace";
+import { useAuth } from "@/lib/auth";
 import {
-  getRequest,
+  getOwnRequest,
+  getRequestPhotoUrl,
   subscribeRequests,
   updateRequest,
   type RequestRow,
@@ -37,7 +40,7 @@ function distanceKm(a: number, b: number, c: number, d: number) {
     Math.cos(a * rad) * Math.cos(c * rad) * Math.sin(((d - b) * rad) / 2) ** 2;
   return 6371 * 2 * Math.atan2(Math.sqrt(x), Math.sqrt(Math.max(0, 1 - x)));
 }
-export default function TrackingScreen() {
+function OwnTracking({ customerId }: { customerId: string }) {
   const params = useLocalSearchParams<{ requestNo?: string }>();
   const [lookup, setLookup] = useState(params.requestNo ?? "");
   const [number, setNumber] = useState(params.requestNo ?? "");
@@ -63,7 +66,7 @@ export default function TrackingScreen() {
     if (!number) return;
     async function load() {
       try {
-        const data = await getRequest(number);
+        const data = await getOwnRequest(number, customerId);
         if (active) {
           setRequest(data);
           setError(false);
@@ -78,12 +81,12 @@ export default function TrackingScreen() {
     }
     setLoading(true);
     void load();
-    const unsubscribe = subscribeRequests("tracking-request", load);
+    const unsubscribe = subscribeRequests("tracking-request", load, customerId);
     return () => {
       active = false;
       unsubscribe();
     };
-  }, [number, attempt]);
+  }, [number, attempt, customerId]);
   async function review() {
     if (!request || !rating || saving) return;
     setSaving(true);
@@ -106,6 +109,15 @@ export default function TrackingScreen() {
     } catch {
       setMessage("Bağlantı açılamadı.");
     }
+  }
+  async function openPhoto() {
+    if (!request) return;
+    const url = await getRequestPhotoUrl(request);
+    if (!url) {
+      setMessage("Fotoğraf açılamadı.");
+      return;
+    }
+    await open(url);
   }
   const hasCustomer = request?.latitude != null && request.longitude != null;
   const hasProfessional =
@@ -204,11 +216,11 @@ export default function TrackingScreen() {
             <Text style={ui.heading}>Konum ve hizmet detayları</Text>
             <Text style={ui.body}>{request.address}</Text>
             {request.note && <Text style={ui.body}>{request.note}</Text>}
-            {request.photo_url && (
+            {(request.photo_url || request.photo_path) && (
               <Button
                 secondary
                 title="Talep fotoğrafını aç"
-                onPress={() => void open(request.photo_url!)}
+                onPress={() => void openPhoto()}
               />
             )}
             {hasCustomer && (
@@ -299,4 +311,9 @@ export default function TrackingScreen() {
       {!!message && <State title={message} />}
     </Screen>
   );
+}
+
+export default function TrackingScreen() {
+  const { user } = useAuth();
+  return <RequireAuth>{user && <OwnTracking customerId={user.id} />}</RequireAuth>;
 }
