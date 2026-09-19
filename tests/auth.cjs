@@ -25,6 +25,8 @@ function load(path, dependencies = {}) {
 const authTypes = load("types/auth.ts");
 const rbac = load("lib/rbac.ts", { "@/types/auth": authTypes });
 const authErrors = load("lib/auth-errors.ts");
+const validation = load("lib/validation.ts");
+const deepLink = load("lib/auth-deep-link.ts");
 
 test("isUserRole accepts only the three known roles", () => {
   assert.equal(rbac.isUserRole("customer"), true);
@@ -114,4 +116,65 @@ test("mapAuthError maps known cases to Turkish and never leaks raw internals for
     "Bir sorun oluştu. Lütfen tekrar deneyin.",
   );
   assert.equal(authErrors.mapAuthError({ status: 429, message: "" }), "Çok fazla deneme yapıldı. Lütfen biraz sonra tekrar deneyin.");
+});
+
+test("isValidEmail rejects obviously malformed addresses", () => {
+  assert.equal(validation.isValidEmail("test@example.com"), true);
+  assert.equal(validation.isValidEmail("  test@example.com  "), true);
+  assert.equal(validation.isValidEmail("not-an-email"), false);
+  assert.equal(validation.isValidEmail("missing-domain@"), false);
+  assert.equal(validation.isValidEmail("@missing-local.com"), false);
+  assert.equal(validation.isValidEmail("no-tld@example"), false);
+  assert.equal(validation.isValidEmail(""), false);
+  assert.equal(validation.isValidEmail("has space@example.com"), false);
+});
+
+test("parseAuthCallbackUrl reads tokens from the fragment (Supabase's implicit-flow shape)", () => {
+  const result = deepLink.parseAuthCallbackUrl(
+    "ustayanimda://auth/callback#access_token=AT123&refresh_token=RT456&type=signup&token_type=bearer",
+  );
+  assert.equal(result.accessToken, "AT123");
+  assert.equal(result.refreshToken, "RT456");
+  assert.equal(result.type, "signup");
+  assert.equal(result.error, null);
+});
+
+test("parseAuthCallbackUrl distinguishes a recovery link from a signup confirmation", () => {
+  const result = deepLink.parseAuthCallbackUrl(
+    "ustayanimda://auth/callback#access_token=AT&refresh_token=RT&type=recovery",
+  );
+  assert.equal(result.type, "recovery");
+});
+
+test("parseAuthCallbackUrl surfaces an expired/invalid link error instead of missing tokens", () => {
+  const result = deepLink.parseAuthCallbackUrl(
+    "ustayanimda://auth/callback?error=access_denied&error_code=otp_expired&error_description=Email+link+is+invalid+or+has+expired",
+  );
+  assert.equal(result.accessToken, null);
+  assert.equal(result.error, "access_denied");
+  assert.equal(result.errorCode, "otp_expired");
+  assert.ok(result.errorDescription.includes("expired"));
+  assert.equal(
+    authErrors.mapAuthCallbackError(result),
+    "Bağlantının süresi dolmuş. Lütfen yeni bir bağlantı isteyin.",
+  );
+});
+
+test("parseAuthCallbackUrl on a malformed/tokenless URL yields nulls, not a throw", () => {
+  const result = deepLink.parseAuthCallbackUrl("ustayanimda://auth/callback");
+  assert.equal(result.accessToken, null);
+  assert.equal(result.refreshToken, null);
+  assert.equal(result.error, null);
+  assert.equal(authErrors.mapAuthCallbackError(result), "Bir sorun oluştu. Lütfen tekrar deneyin.");
+});
+
+test("isValidPassword matches the signup minimum length", () => {
+  assert.equal(validation.isValidPassword("12345"), false);
+  assert.equal(validation.isValidPassword("123456"), true);
+});
+
+test("passwordsMatch catches mismatches and rejects a blank password", () => {
+  assert.equal(validation.passwordsMatch("secret1", "secret1"), true);
+  assert.equal(validation.passwordsMatch("secret1", "secret2"), false);
+  assert.equal(validation.passwordsMatch("", ""), false);
 });

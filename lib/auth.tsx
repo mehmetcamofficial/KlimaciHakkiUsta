@@ -7,6 +7,7 @@ import React, {
   useState,
   type PropsWithChildren,
 } from "react";
+import * as Linking from "expo-linking";
 import type { Session, User } from "@supabase/supabase-js";
 
 import { mapAuthError } from "@/lib/auth-errors";
@@ -19,6 +20,16 @@ interface SignUpResult {
   needsEmailConfirmation: boolean;
 }
 
+/**
+ * Both signup confirmation and password recovery emails redirect here.
+ * expo-linking builds the right URL for the current environment (the
+ * `ustayanimda://` custom scheme in a dev client/standalone build, an
+ * `exp://` proxy URL in Expo Go) instead of falling back to Supabase's
+ * default Site URL (which is a web-oriented localhost address and is
+ * exactly what produced the ERR_CONNECTION_REFUSED bug this fixes).
+ */
+const AUTH_CALLBACK_URL = Linking.createURL("/auth/callback");
+
 interface AuthContextValue {
   session: Session | null;
   user: User | null;
@@ -30,6 +41,20 @@ interface AuthContextValue {
   signUp: (email: string, password: string, fullName?: string) => Promise<SignUpResult>;
   signOut: () => Promise<void>;
   refreshProfile: () => Promise<void>;
+  /** Sends a password-recovery email pointing back at the app. */
+  requestPasswordReset: (email: string) => Promise<{ error: string | null }>;
+  /** Sets a new password for the currently active (recovery) session. */
+  updatePassword: (newPassword: string) => Promise<{ error: string | null }>;
+  /**
+   * Establishes a session from the tokens found in an auth callback deep
+   * link (app/auth/callback.tsx). Centralized here, like every other
+   * `supabase.auth.*` call, rather than letting the screen touch the
+   * client directly.
+   */
+  establishSessionFromTokens: (
+    accessToken: string,
+    refreshToken: string,
+  ) => Promise<{ error: string | null }>;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -104,10 +129,14 @@ export function AuthProvider({ children }: PropsWithChildren) {
         const { data, error } = await supabase.auth.signUp({
           email: email.trim(),
           password,
-          // full_name is not privileged — the server-side trigger that
-          // creates the profile always hardcodes role="customer" and never
-          // reads a role from this metadata (see supabase/migrations).
-          options: fullName?.trim() ? { data: { full_name: fullName.trim() } } : undefined,
+          options: {
+            emailRedirectTo: AUTH_CALLBACK_URL,
+            // full_name is not privileged — the server-side trigger that
+            // creates the profile always hardcodes role="customer" and
+            // never reads a role from this metadata (see
+            // supabase/migrations).
+            ...(fullName?.trim() ? { data: { full_name: fullName.trim() } } : {}),
+          },
         });
         if (error) {
           return { error: mapAuthError(error), needsEmailConfirmation: false };
@@ -116,6 +145,23 @@ export function AuthProvider({ children }: PropsWithChildren) {
       },
       async signOut() {
         await supabase.auth.signOut();
+      },
+      async requestPasswordReset(email) {
+        const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), {
+          redirectTo: AUTH_CALLBACK_URL,
+        });
+        return { error: error ? mapAuthError(error) : null };
+      },
+      async updatePassword(newPassword) {
+        const { error } = await supabase.auth.updateUser({ password: newPassword });
+        return { error: error ? mapAuthError(error) : null };
+      },
+      async establishSessionFromTokens(accessToken, refreshToken) {
+        const { error } = await supabase.auth.setSession({
+          access_token: accessToken,
+          refresh_token: refreshToken,
+        });
+        return { error: error ? mapAuthError(error) : null };
       },
       async refreshProfile() {
         if (session?.user.id) await loadProfile(session.user.id);

@@ -17,6 +17,8 @@ export default function RootLayout() {
           <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
           <Stack.Screen name="sign-in" options={{ title: "Giriş Yap" }} />
           <Stack.Screen name="sign-up" options={{ title: "Kayıt Ol" }} />
+          <Stack.Screen name="forgot-password" options={{ title: "Şifremi Unuttum" }} />
+          <Stack.Screen name="reset-password" options={{ title: "Yeni Şifre" }} />
           <Stack.Screen
             name="modal"
             options={{ presentation: "modal", title: "Modal" }}

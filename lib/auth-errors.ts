@@ -29,3 +29,29 @@ export function mapAuthError(error: { message?: string; status?: number }): stri
 
   return "Bir sorun oluştu. Lütfen tekrar deneyin.";
 }
+
+/**
+ * Maps the `error`/`error_code`/`error_description` query params Supabase
+ * appends to a deep-link redirect (e.g. an expired confirmation or password
+ * recovery link) to a friendly Turkish message. Separate from mapAuthError
+ * because this data comes from a URL, not a GoTrueError object.
+ */
+export function mapAuthCallbackError(result: {
+  error?: string | null;
+  errorCode?: string | null;
+  errorDescription?: string | null;
+}): string {
+  const code = (result.errorCode ?? "").toLowerCase();
+  const description = (result.errorDescription ?? "").toLowerCase();
+
+  if (code.includes("otp_expired") || description.includes("expired")) {
+    return "Bağlantının süresi dolmuş. Lütfen yeni bir bağlantı isteyin.";
+  }
+  if (result.error === "access_denied") {
+    return "Bağlantı geçersiz veya erişim reddedildi. Lütfen tekrar deneyin.";
+  }
+  if (result.error || code) {
+    return "Bağlantı geçersiz. Lütfen tekrar deneyin.";
+  }
+  return "Bir sorun oluştu. Lütfen tekrar deneyin.";
+}

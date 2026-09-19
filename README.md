@@ -41,7 +41,9 @@ talep sahipliği eklendi (aşağıdaki "Kimlik, roller ve RLS" bölümüne bakı
   girişli kullanıcı gerektirir.
 - `/`: herkese açık — Türkçe kategori/hizmet adı araması, kategori grid'i, hızlı hizmetler.
 - `/services/[categorySlug]`: herkese açık — tüm kategoriler için tek hizmet ekranı.
-- `/sign-in`, `/sign-up`: herkese açık kimlik doğrulama ekranları.
+- `/sign-in`, `/sign-up`, `/forgot-password`, `/reset-password`: herkese açık kimlik
+  doğrulama ekranları. `/auth/callback`: e-posta onayı ve şifre sıfırlama linklerinin
+  döndüğü, `ustayanimda://` şemasıyla açılan ortak deep-link hedefi.
 - `/request/new?category=klima&type=klima-arizasi`: **giriş gerektirir** — seçilen hizmet formu.
 - `/service`: Taleplerim — **giriş gerektirir**; yalnızca giriş yapan müşterinin talepleri.
 - `/tracking?requestNo=...`: **giriş gerektirir**; yalnızca kendi talebiniz aranabilir/görülebilir.
@@ -131,19 +133,19 @@ Faz 1:
 Faz 2 — sırayla uygulayın, `170300` isteğe bağlı olarak ertelenebilir (yukarıya bakın):
 
 - `supabase/migrations/20260919170000_profiles_and_roles.sql`: `profiles`, roller,
-  `is_admin()`, yeni kullanıcı trigger'ı.
+  `is_admin()`, yeni kullanıcı trigger'ı. **Uygulandı.**
 - `supabase/migrations/20260919170100_catalog_rls.sql`: kategori/hizmet tipi tablolarında
-  RLS (herkese açık okuma, yazma yok).
+  RLS (herkese açık okuma, yazma yok). **Uygulandı.**
 - `supabase/migrations/20260919170200_service_requests_ownership.sql`: `customer_id`,
-  RLS, kolon-bazlı update guard trigger'ı, realtime publication.
+  RLS, kolon-bazlı update guard trigger'ı, realtime publication. **Uygulandı.**
 - `supabase/migrations/20260919170300_secure_storage.sql`: private bucket + storage
-  politikaları (yukarıya bakın — ayrı, isteğe bağlı zamanlanan adım).
+  politikaları (yukarıya bakın — ayrı, isteğe bağlı zamanlanan adım). **Uygulanmadı.**
 
-**Hiçbiri remote'a otomatik uygulanmadı. Gerçek remote şema/politikalar varsayılmadı.**
-Migration dosyaları additive/idempotent yazılmıştır (`if exists`/`if not exists`,
-`on conflict do nothing`) ve mevcut satırları silmez/yeniden atamaz. Faz 1 migration'ları
-henüz uygulanmamışsa bile Faz 2 migration'ları güvenle uygulanabilir (`to_regclass` ile
-tablo varlığı kontrol edilir).
+Yukarıdaki üçü artık remote projeye uygulanmış durumda (bu proje sahibi tarafından,
+bu kod değişikliklerinin dışında yapıldı — dosyaların kendisi değiştirilmedi).
+`170300` bilinçli olarak ayrı bırakıldı. Migration dosyaları additive/idempotent
+yazılmıştır (`if exists`/`if not exists`, `on conflict do nothing`) ve mevcut
+satırları silmez/yeniden atamaz.
 
 `createServiceRequest`, tam payload'ı (sahiplik + kategori/hizmet kolonları) dener; hangi
 opsiyonel kolon eksikse (Faz 1 ve/veya Faz 2'nin hangi kısmı henüz uygulanmadıysa) yalnız
@@ -224,11 +226,18 @@ Bunlar kaynak koddan otomatik oluşturulmaz.
 - [x] Taleplerim/Takip artık yalnızca giriş yapan müşterinin kendi kayıtlarını gösterir.
 - [x] `/request/new`, `/service`, `/tracking`, `/profile` giriş gerektirir; `/admin` admin
       rolü gerektirir (UI guard) — hepsi RLS ile de sınırlanır.
-- [x] Private storage + owner-scoped path + signed URL tasarımı ve migration'ı hazır.
-- [x] Additive/idempotent Faz 2 migration'ları; remote'a **uygulanmadı**.
-- [x] Lint, TypeScript, genişletilmiş servis kontratı testleri + yeni auth/RBAC testleri.
+- [x] Private storage + owner-scoped path + signed URL tasarımı ve migration'ı hazır
+      (`170300`, bilinçli olarak henüz uygulanmadı).
+- [x] Additive/idempotent Faz 2 migration'ları; `170000`/`170100`/`170200` remote'a
+      **uygulandı**, `170300` uygulanmadı.
+- [x] E-posta onayı ve şifre sıfırlama artık `ustayanimda://` deep link'ine
+      yönlendiriyor (localhost değil); `/forgot-password`, `/reset-password`,
+      `/auth/callback` eklendi.
+- [x] Lint, TypeScript, genişletilmiş servis kontratı testleri + auth/RBAC/deep-link
+      testleri (19/19).
 - [x] Web bundle export (tüm yeni rotalar dahil) temiz.
-- [ ] Migration'lar gerçek Supabase projesine uygulandı ve doğrulandı.
+- [ ] Gerçek Android cihazda e-posta onayı/recovery linkinin uygulamayı gerçekten
+      açtığı doğrulandı (bkz. docs/validation/phase2.md §9).
 - [ ] Gerçek Android cihaz/emülatörde uçtan uca kimlik doğrulama + RLS manuel QA'sı.
 - [ ] Realtime `postgres_changes`'in RLS'i fiilen uyguladığı bu projede doğrulandı.
 

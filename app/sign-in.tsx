@@ -70,6 +70,13 @@ export default function SignInScreen() {
       />
 
       <Button
+        title="Şifremi unuttum"
+        secondary
+        disabled={submitting}
+        onPress={() => router.push("/forgot-password")}
+      />
+
+      <Button
         title="Hesabınız yok mu? Kayıt olun"
         secondary
         disabled={submitting}
