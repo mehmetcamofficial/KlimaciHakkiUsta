@@ -19,7 +19,7 @@ function AuthenticatedProfile() {
   }
 
   return (
-    <Screen>
+    <Screen width="narrow">
       <Brand />
       <Text style={ui.title}>Profil</Text>
       <View style={ui.card}>

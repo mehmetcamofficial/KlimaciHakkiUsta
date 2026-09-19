@@ -16,10 +16,10 @@ import { colors, radius, spacing, ui } from "@/theme";
 
 /**
  * The one place every screen gets its responsive content container from —
- * "narrow" is for auth/forms (always readable-width, even on a wide
- * desktop monitor); "default" is for general content pages, which stay
- * 100% width on mobile, get comfortable padding on tablet, and stop
- * stretching edge-to-edge past the desktop breakpoint.
+ * see lib/responsive.ts's CONTENT_MAX_WIDTH for what each `width` variant
+ * ("narrow" | "medium" | "default") is for and why. All three stay 100%
+ * width on mobile with comfortable padding on tablet, and simply stop
+ * stretching edge-to-edge past their own desktop cap.
  */
 export function Screen({
   children,

@@ -46,7 +46,7 @@ function OwnRequestsList({ customerId }: { customerId: string }) {
     };
   }, [attempt, customerId]);
   return (
-    <Screen>
+    <Screen width="medium">
       <Text style={ui.title}>Taleplerim</Text>
       <Text style={ui.caption}>Yalnızca sizin oluşturduğunuz talepler listelenir.</Text>
       {loading ? (

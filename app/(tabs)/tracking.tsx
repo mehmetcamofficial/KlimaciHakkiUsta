@@ -134,7 +134,7 @@ function OwnTracking({ customerId }: { customerId: string }) {
       : null;
   const activeIndex = steps.indexOf(request?.status ?? "");
   return (
-    <Screen>
+    <Screen width="medium">
       <Text style={ui.title}>Talep takibi</Text>
       <TextInput
         accessibilityLabel="Talep numarası"
