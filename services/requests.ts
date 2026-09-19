@@ -10,19 +10,48 @@ export function generateRequestNo(): string {
   );
 }
 
+/**
+ * Thrown when the database is missing a column this app version needs
+ * (e.g. `customer_id` before the Phase 2 ownership migration is applied).
+ * Kept distinct from a generic failure so the UI can tell the user this is
+ * a temporary server-side configuration gap, not something they can fix by
+ * retrying with different input.
+ */
+export class ConfigurationError extends Error {}
+
+function extensionFor(mimeType: string): string {
+  if (mimeType === "image/png") return "png";
+  if (mimeType === "image/webp") return "webp";
+  if (mimeType === "image/heic") return "heic";
+  return "jpg";
+}
+
+interface UploadedPhoto {
+  /** Owner-scoped storage object path, e.g. `{uid}/{requestNo}/photo.jpg`. */
+  path: string;
+  /**
+   * `getPublicUrl`'s URL for that path. Only actually resolves while the
+   * `service-photos` bucket is still public (i.e. before
+   * 20260919170300_secure_storage.sql is applied) — kept as a legacy-shape
+   * fallback for `photo_url`, never relied on once `photo_path` is set.
+   */
+  legacyPublicUrl: string;
+}
+
 export async function uploadRequestPhoto(
   photoUri: string,
+  customerId: string,
   requestNo: string,
   mimeType = "image/jpeg",
-): Promise<string | null> {
+): Promise<UploadedPhoto> {
   const response = await fetch(photoUri);
   const arrayBuffer = await response.arrayBuffer();
 
-  const filePath = `${requestNo}.${mimeType === "image/png" ? "png" : mimeType === "image/webp" ? "webp" : mimeType === "image/heic" ? "heic" : "jpg"}`;
+  const path = `${customerId}/${requestNo}/photo.${extensionFor(mimeType)}`;
 
   const { error } = await supabase.storage
     .from("service-photos")
-    .upload(filePath, arrayBuffer, {
+    .upload(path, arrayBuffer, {
       contentType: mimeType,
       upsert: false,
     });
@@ -31,11 +60,29 @@ export async function uploadRequestPhoto(
     throw error;
   }
 
-  const { data } = supabase.storage
-    .from("service-photos")
-    .getPublicUrl(filePath);
+  const { data } = supabase.storage.from("service-photos").getPublicUrl(path);
 
-  return data.publicUrl;
+  return { path, legacyPublicUrl: data.publicUrl };
+}
+
+/**
+ * Resolves an openable URL for a request's photo: a freshly-generated
+ * signed URL when the (private, Phase 2) `photo_path` is set, otherwise the
+ * legacy public URL for rows uploaded before Phase 2. Returns null if
+ * neither is present, or if signing fails (e.g. the object no longer
+ * exists).
+ */
+export async function getRequestPhotoUrl(
+  row: Pick<RequestRow, "photo_path" | "photo_url">,
+): Promise<string | null> {
+  if (row.photo_path) {
+    const { data, error } = await supabase.storage
+      .from("service-photos")
+      .createSignedUrl(row.photo_path, 60 * 60);
+    if (error) return null;
+    return data.signedUrl;
+  }
+  return row.photo_url;
 }
 
 interface ServiceRequestLegacyPayload {
@@ -49,48 +96,69 @@ interface ServiceRequestLegacyPayload {
   latitude: number | null;
   longitude: number | null;
   photo_url: string | null;
+  photo_path: string | null;
   status: string;
 }
 
-interface ServiceRequestMarketplacePayload extends ServiceRequestLegacyPayload {
+interface ServiceRequestOwnedPayload extends ServiceRequestLegacyPayload {
+  customer_id: string;
+}
+
+interface ServiceRequestMarketplacePayload extends ServiceRequestOwnedPayload {
   category_slug: string;
   category_id: string | null;
   service_type_slug: string;
   service_type_id: string | null;
 }
 
-function isMissingMarketplaceColumnsError(error: {
-  code?: string;
-  message?: string;
-}): boolean {
-  if (!["PGRST204", "42703"].includes(error.code ?? "")) return false;
+/** Columns whose absence just means an optional migration isn't applied
+ * yet — safe to drop from the payload and retry. `customer_id` is
+ * deliberately not in this list; see createServiceRequest. */
+const DEGRADABLE_COLUMNS = [
+  "category_id",
+  "category_slug",
+  "service_type_id",
+  "service_type_slug",
+  "photo_path",
+] as const;
+
+function missingColumn(error: { code?: string; message?: string }): string | null {
+  if (!["PGRST204", "42703"].includes(error.code ?? "")) return null;
   const message = error.message ?? "";
-  return /category_id|category_slug|service_type_id|service_type_slug/.test(
-    message,
-  );
+  const match = message.match(/category_id|category_slug|service_type_id|service_type_slug|photo_path|customer_id/);
+  return match?.[0] ?? null;
 }
 
 /**
- * Creates a service request. The insert first tries the full marketplace
- * payload (category/service-type slugs and ids). If the target database
- * doesn't have those columns yet — the migration in
- * `supabase/migrations` hasn't been applied — it transparently retries with
- * the legacy-only payload so request creation (including the Klima flow)
- * keeps working either way.
+ * Creates a service request owned by `input.customerId`.
+ *
+ * The insert is attempted with the full payload, then retried with one
+ * more optional column dropped each time the database reports that column
+ * missing (bounded by DEGRADABLE_COLUMNS.length so this can't loop forever)
+ * — this way any subset of the optional Phase 1/2 migrations being applied
+ * (or not) still results in a successful insert with whatever richer data
+ * the schema currently supports.
+ *
+ * If `customer_id` itself is missing (the Phase 2 ownership migration
+ * hasn't been applied), this throws a `ConfigurationError` instead of
+ * silently creating an unowned request — unlike the columns above,
+ * ownership is a security property, not a data-richness nicety, so it is
+ * never silently dropped.
  */
 export async function createServiceRequest(
   input: CreateServiceRequestInput,
 ): Promise<{ requestNo: string }> {
   const requestNo = generateRequestNo();
-  const photoUrl = input.photoUri
+  const uploaded = input.photoUri
     ? await uploadRequestPhoto(
         input.photoUri,
+        input.customerId,
         requestNo,
         input.photoMimeType ?? undefined,
       )
     : null;
 
-  const legacyPayload: ServiceRequestLegacyPayload = {
+  const fullPayload: ServiceRequestMarketplacePayload = {
     request_no: requestNo,
     phone: input.phone,
     address: input.address,
@@ -100,29 +168,32 @@ export async function createServiceRequest(
     problem_type: input.serviceTypeName,
     latitude: input.latitude ?? null,
     longitude: input.longitude ?? null,
-    photo_url: photoUrl,
+    photo_url: uploaded?.legacyPublicUrl ?? null,
+    photo_path: uploaded?.path ?? null,
     status: "Talep alındı",
-  };
-
-  const marketplacePayload: ServiceRequestMarketplacePayload = {
-    ...legacyPayload,
+    customer_id: input.customerId,
     category_slug: input.categorySlug,
     category_id: input.categoryId ?? null,
     service_type_slug: input.serviceTypeSlug,
     service_type_id: input.serviceTypeId ?? null,
   };
 
-  let { error } = await supabase
-    .from("service_requests")
-    .insert(marketplacePayload);
+  let payload: Record<string, unknown> = { ...fullPayload };
+  let error: { code?: string; message?: string } | null = null;
 
-  if (error && isMissingMarketplaceColumnsError(error)) {
-    ({ error } = await supabase
-      .from("service_requests")
-      .insert({
-        ...legacyPayload,
-        note: `[Hizmet: ${input.categorySlug} / ${input.serviceTypeSlug}]\n${input.description}`,
-      }));
+  for (let attempt = 0; attempt <= DEGRADABLE_COLUMNS.length; attempt++) {
+    ({ error } = await supabase.from("service_requests").insert(payload));
+    if (!error) break;
+
+    const column = missingColumn(error);
+    if (column === "customer_id") {
+      throw new ConfigurationError(
+        "Talep sahipliği için veritabanı güncellemesi henüz uygulanmadı.",
+      );
+    }
+    if (!column || !(column in payload)) break;
+    const { [column]: _dropped, ...rest } = payload;
+    payload = rest;
   }
 
   if (error) {
@@ -145,8 +216,10 @@ export interface RequestRow {
   ac_type: string | null;
   category_slug?: string | null;
   service_type_slug?: string | null;
+  customer_id?: string | null;
   created_at?: string;
   photo_url: string | null;
+  photo_path?: string | null;
   latitude: number | null;
   longitude: number | null;
   technician_name: string | null;
@@ -157,7 +230,32 @@ export interface RequestRow {
   review_comment: string | null;
   eta?: string | null;
 }
-export async function listRequests(): Promise<RequestRow[]> {
+
+/**
+ * The authenticated customer's own requests (Taleplerim). Filtered
+ * client-side by `customer_id` as well as by RLS — both are expected to
+ * agree; the client filter keeps the intent explicit and the screen correct
+ * even before/without RLS being verified.
+ */
+export async function listOwnRequests(customerId: string): Promise<RequestRow[]> {
+  const { data, error } = await supabase
+    .from("service_requests")
+    .select("*")
+    .eq("customer_id", customerId)
+    .order("id", { ascending: false })
+    .limit(50);
+  if (error) throw error;
+  return data ?? [];
+}
+
+/**
+ * All requests, for the admin operations screen. Relies entirely on RLS: a
+ * genuine admin's row will be allowed to see every request; anyone else's
+ * database role only ever gets their own rows back regardless of this
+ * unfiltered query, because the database — not this function — is the
+ * authorization boundary.
+ */
+export async function listRequestsForAdmin(): Promise<RequestRow[]> {
   const { data, error } = await supabase
     .from("service_requests")
     .select("*")
@@ -166,17 +264,22 @@ export async function listRequests(): Promise<RequestRow[]> {
   if (error) throw error;
   return data ?? [];
 }
-export async function getRequest(
+
+/** A customer looking up their own request by number (Takip). */
+export async function getOwnRequest(
   requestNo: string,
+  customerId: string,
 ): Promise<RequestRow | null> {
   const { data, error } = await supabase
     .from("service_requests")
     .select("*")
     .eq("request_no", requestNo)
+    .eq("customer_id", customerId)
     .maybeSingle();
   if (error) throw error;
   return data;
 }
+
 export async function updateRequest(
   id: number,
   changes: Partial<
@@ -196,15 +299,30 @@ export async function updateRequest(
     .eq("id", id);
   if (error) throw error;
 }
-export function subscribeRequests(name: string, onChange: () => void) {
-  const channel = supabase
-    .channel(name)
-    .on(
-      "postgres_changes",
-      { event: "*", schema: "public", table: "service_requests" },
-      onChange,
-    )
-    .subscribe();
+
+/**
+ * Subscribes to service_requests changes and calls `onChange` (which is
+ * expected to re-fetch through the RLS-scoped functions above — the
+ * realtime payload itself is never read or trusted for authorization).
+ * Pass `filterCustomerId` to also scope the subscription itself, as
+ * defense-in-depth alongside RLS rather than instead of it.
+ */
+export function subscribeRequests(
+  name: string,
+  onChange: () => void,
+  filterCustomerId?: string,
+) {
+  const channel = supabase.channel(name).on(
+    "postgres_changes",
+    {
+      event: "*",
+      schema: "public",
+      table: "service_requests",
+      ...(filterCustomerId ? { filter: `customer_id=eq.${filterCustomerId}` } : {}),
+    },
+    onChange,
+  );
+  channel.subscribe();
   return () => {
     void supabase.removeChannel(channel);
   };
