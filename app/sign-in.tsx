@@ -30,7 +30,7 @@ export default function SignInScreen() {
   }
 
   return (
-    <Screen>
+    <Screen width="narrow">
       <Stack.Screen options={{ title: "Giriş Yap" }} />
       <Brand />
       <Text style={ui.title}>Tekrar hoş geldiniz</Text>

@@ -42,7 +42,7 @@ export default function ResetPasswordScreen() {
 
   if (isLoading) {
     return (
-      <Screen>
+      <Screen width="narrow">
         <Stack.Screen options={{ title: "Yeni Şifre" }} />
         <State loading title="Yükleniyor…" />
       </Screen>
@@ -51,7 +51,7 @@ export default function ResetPasswordScreen() {
 
   if (!session) {
     return (
-      <Screen>
+      <Screen width="narrow">
         <Stack.Screen options={{ title: "Yeni Şifre" }} />
         <State title="Bağlantının süresi dolmuş veya geçersiz. Yeniden şifre sıfırlama isteği gönderin." />
         <Button
@@ -64,7 +64,7 @@ export default function ResetPasswordScreen() {
 
   if (done) {
     return (
-      <Screen>
+      <Screen width="narrow">
         <Stack.Screen options={{ title: "Yeni Şifre" }} />
         <Brand />
         <Text style={ui.title}>Şifreniz güncellendi</Text>
@@ -75,7 +75,7 @@ export default function ResetPasswordScreen() {
   }
 
   return (
-    <Screen>
+    <Screen width="narrow">
       <Stack.Screen options={{ title: "Yeni Şifre" }} />
       <Brand />
       <Text style={ui.title}>Yeni şifre belirleyin</Text>

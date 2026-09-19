@@ -37,7 +37,7 @@ export default function SignUpScreen() {
   }
 
   return (
-    <Screen>
+    <Screen width="narrow">
       <Stack.Screen options={{ title: "Kayıt Ol" }} />
       <Brand />
       <Text style={ui.title}>Hesap oluşturun</Text>
